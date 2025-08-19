@@ -50,6 +50,6 @@ func main() {
 	fmt.Fprintf(color.Output, bold("\nFound %d TODO comment(s)\n\n"), len(todos))
 	for _, todo := range todos {
 		fmt.Fprintf(color.Output, "* %s\n", blue(todo.Filename+":"+strconv.Itoa(todo.Line)))
-		fmt.Fprintf(color.Output, "    %s\n\n", todo.Comment)
+		fmt.Fprintf(color.Output, "  %s\n\n", todo.Comment)
 	}
 }

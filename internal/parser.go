@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	todoRegex = regexp.MustCompile(`(?i)(?://|#|<!--|;|/\*)\s*(TODO|FIXME|HACK|NOTE|XXX|BUG):?\s*(.*)`)
+	todoRegex = regexp.MustCompile(`(?i)((?://|#|<!--|;|/\*)\s*(TODO|FIXME|HACK|NOTE|XXX|BUG):?\s*.*)`)
 	hunkRegex = regexp.MustCompile(`^@@\s+\-\d+(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@`)
 )
 
@@ -36,8 +36,8 @@ func ParseDiff(diffOutput string) []types.TODO {
 				todos = append(todos, types.TODO{
 					Filename: currentFile,
 					Line:     lineNumber,
-					Comment:  strings.TrimSpace(after),
-					Type:     strings.ToUpper(matches[1]),
+					Comment:  strings.TrimSpace(matches[1]),
+					Type:     strings.ToUpper(matches[2]),
 				})
 			}
 		} else if _, ok := strings.CutPrefix(line, " "); ok {

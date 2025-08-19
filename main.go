@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/Suree33/gh-pr-todo/internal"
@@ -12,8 +13,10 @@ import (
 )
 
 var (
+	bold  = color.New(color.Bold).SprintFunc()
 	green = color.New(color.FgGreen).SprintFunc()
 	red   = color.New(color.FgRed).SprintFunc()
+	blue  = color.New(color.FgBlue).SprintFunc()
 )
 
 func main() {
@@ -44,9 +47,9 @@ func main() {
 		return
 	}
 
-	fmt.Fprintf(color.Output, "\nFound %d TODO comment(s):\n\n", len(todos))
-	for i, todo := range todos {
-		fmt.Printf("%d. [%s] %s:%d\n", i+1, todo.Type, todo.Filename, todo.Line)
-		fmt.Printf("   %s\n\n", todo.Comment)
+	fmt.Fprintf(color.Output, bold("\nFound %d TODO comment(s)\n\n"), len(todos))
+	for _, todo := range todos {
+		fmt.Fprintf(color.Output, "* %s\n", blue(todo.Filename+":"+strconv.Itoa(todo.Line)))
+		fmt.Fprintf(color.Output, "    %s\n\n", todo.Comment)
 	}
 }

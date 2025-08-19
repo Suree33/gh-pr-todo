@@ -52,12 +52,10 @@ The tool recognizes TODO-style comments in various formats:
 | Format | Example |
 |--------|---------|
 | **C-style** | `// TODO: Fix this bug` |
+| **C-style block** | `/* HACK: Quick fix for demo */` |
 | **Shell/Python** | `# FIXME: Optimization needed` |
 | **HTML/XML** | `<!-- NOTE: Review this section -->` |
 | **Assembly/Config** | `; XXX: Temporary workaround` |
-| **C-style block** | `/* HACK: Quick fix for demo */` |
-| **Markdown lists** | `- TODO: Add tests` |
-| **Numbered lists** | `1. BUG: Handle edge case` |
 
 ## 🏗️ Supported Keywords
 

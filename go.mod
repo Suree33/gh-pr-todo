@@ -1,8 +1,6 @@
 module github.com/Suree33/gh-pr-todo
 
-go 1.23.0
-
-toolchain go1.23.3
+go 1.23.3
 
 require (
 	github.com/briandowns/spinner v1.23.2

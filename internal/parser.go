@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	todoRegex = regexp.MustCompile(`(?i)//\s*(TODO|FIXME|HACK|NOTE|XXX|BUG):?\s*(.*)`)
+	todoRegex = regexp.MustCompile(`(?i)(?://|#|<!--|;|/\*|^[ \t]*(?:-|\d+\.))\s*(TODO|FIXME|HACK|NOTE|XXX|BUG):?\s*(.*)`)
 	hunkRegex = regexp.MustCompile(`^@@\s+\-\d+(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@`)
 )
 

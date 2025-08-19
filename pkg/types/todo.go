@@ -1,9 +1,12 @@
 package types
 
-// TODO represents a TODO comment found in a diff
+// Represents a TODO comment found in a diff
 type TODO struct {
 	Filename string
-	Line     int
-	Comment  string
-	Type     string // TODO, FIXME, HACK, NOTE, etc.
+	// The line number in the file
+	Line int
+	// The comment content
+	Comment string
+	// TODO, FIXME, HACK, NOTE, etc.
+	Type string
 }

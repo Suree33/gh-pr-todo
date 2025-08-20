@@ -218,7 +218,7 @@ index 1234567..abcdefg 100644
 +	// TODO: first hunk
  }
  
- @@ -15,6 +16,7 @@ func third() {
+@@ -15,6 +16,7 @@ func third() {
  }
  
  func fourth() {
@@ -247,17 +247,17 @@ index 1234567..abcdefg 100644
 +++ b/file1.go
 @@ -1,3 +1,4 @@
  package main
-
+ 
 +// TODO: file1 task
  func main() {}
-
+ 
 diff --git a/file2.go b/file2.go
 index 7890123..defghij 100644
 --- a/file2.go
 +++ b/file2.go
 @@ -1,3 +1,4 @@
  package utils
-
+ 
 +// FIXME: file2 issue
  func helper() {}`,
 			expected: []types.TODO{

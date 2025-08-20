@@ -21,7 +21,6 @@ func ParseDiff(diffOutput string) []types.TODO {
 	var currentFile string
 	var lineNumber int
 
-	// TODO: comment with blank line on top
 	for _, line := range lines {
 		if after, ok := strings.CutPrefix(line, "+++ b/"); ok {
 			currentFile = after

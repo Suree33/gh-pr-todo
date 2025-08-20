@@ -227,13 +227,13 @@ index 1234567..abcdefg 100644
 			expected: []types.TODO{
 				{
 					Filename: "multi_hunk.go",
-					Line:     4,
+					Line:     8,
 					Comment:  "// TODO: first hunk",
 					Type:     "TODO",
 				},
 				{
 					Filename: "multi_hunk.go",
-					Line:     11,
+					Line:     19,
 					Comment:  "// FIXME: second hunk",
 					Type:     "FIXME",
 				},
@@ -263,13 +263,13 @@ index 7890123..defghij 100644
 			expected: []types.TODO{
 				{
 					Filename: "file1.go",
-					Line:     2,
+					Line:     3,
 					Comment:  "// TODO: file1 task",
 					Type:     "TODO",
 				},
 				{
 					Filename: "file2.go",
-					Line:     5,
+					Line:     3,
 					Comment:  "// FIXME: file2 issue",
 					Type:     "FIXME",
 				},
@@ -362,8 +362,8 @@ func TestTodoRegex(t *testing.T) {
 					t.Errorf("Expected regex to match %q, but it didn't", tt.input)
 					return
 				}
-				if matches[1] != tt.todoType {
-					t.Errorf("Expected todo type %q, got %q", tt.todoType, matches[1])
+				if matches[2] != tt.todoType {
+					t.Errorf("Expected todo type %q, got %q", tt.todoType, matches[2])
 				}
 			} else {
 				if len(matches) > 0 {
@@ -417,4 +417,3 @@ func TestHunkRegex(t *testing.T) {
 		})
 	}
 }
-

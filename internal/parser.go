@@ -21,11 +21,12 @@ func ParseDiff(diffOutput string) []types.TODO {
 	var currentFile string
 	var lineNumber int
 
+	// TODO: comment with blank line on top
 	for _, line := range lines {
 		if after, ok := strings.CutPrefix(line, "+++ b/"); ok {
 			currentFile = after
-		} else if after, ok := strings.CutPrefix(line, "@@"); ok {
-			if matches := hunkRegex.FindStringSubmatch(after); len(matches) > 1 {
+		} else if strings.HasPrefix(line, "@@") {
+			if matches := hunkRegex.FindStringSubmatch(line); len(matches) > 1 {
 				if startLine, err := strconv.Atoi(matches[1]); err == nil {
 					lineNumber = startLine - 1
 				}
@@ -40,7 +41,7 @@ func ParseDiff(diffOutput string) []types.TODO {
 					Type:     strings.ToUpper(matches[2]),
 				})
 			}
-		} else if _, ok := strings.CutPrefix(line, " "); ok {
+		} else if strings.HasPrefix(line, " ") {
 			lineNumber++
 		}
 	}

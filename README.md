@@ -22,11 +22,39 @@ gh ext install Suree33/gh-pr-todo
 
 ## 📖 Usage
 
+### Basic Usage
+
 Navigate to your repository with an open pull request and run:
 
 ```bash
 gh pr-todo
 ```
+
+### Advanced Usage
+
+You can specify different repositories, PR numbers, URLs, or branches just like `gh pr diff`:
+
+```bash
+# Specify a different repository
+gh pr-todo -R owner/repo
+
+# Specify a specific PR number
+gh pr-todo 123
+
+# Specify a PR from a different repository
+gh pr-todo 456 -R owner/repo
+
+# Specify a PR by URL
+gh pr-todo https://github.com/owner/repo/pull/789
+
+# Specify a branch
+gh pr-todo feature-branch
+```
+
+### Command Options
+
+- `-R, --repo [HOST/]OWNER/REPO`: Select another repository using the [HOST/]OWNER/REPO format
+- `[<number> | <url> | <branch>]`: Specify a PR by number, URL, or branch name
 
 ### Example Output
 

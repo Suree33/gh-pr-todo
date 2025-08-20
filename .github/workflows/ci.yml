@@ -1,0 +1,38 @@
+name: CI
+
+on:
+    pull_request:
+        types:
+            - opened
+            - reopened
+            - synchronize
+    push:
+        branches:
+            - '*'
+        tags-ignore:
+            - '*'
+
+jobs:
+    build:
+        strategy:
+            fail-fast: false
+            matrix:
+                os: [ubuntu-latest, macos-latest]
+        runs-on: ${{ matrix.os }}
+
+        steps:
+            - uses: actions/checkout@v5
+            
+            - name: Setup Go
+              uses: actions/setup-go@v5
+              with:
+                go-version-file: go.mod
+            
+            - name: Check gofmt
+              run: test -z "$(gofmt -l .)"
+            
+            - name: Build
+              run: go build -v ./...
+
+            - name: Test
+              run: go test -v ./...

@@ -1,5 +1,8 @@
 # gh-pr-todo
 
+[![CI](https://github.com/Suree33/gh-pr-todo/actions/workflows/ci.yml/badge.svg)](https://github.com/Suree33/gh-pr-todo/actions/workflows/ci.yml)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Suree33/gh-pr-todo)
+
 A GitHub CLI extension that extracts TODO comments from pull request diffs, helping you track action items and reminders in your code changes.
 
 ## ✨ Features

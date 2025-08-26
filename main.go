@@ -159,10 +159,6 @@ func runCount(repo string, pr string) {
 
 	todos := internal.ParseDiff(stdOut.String())
 
-	if len(todos) == 0 {
-		return
-	}
-
 	fmt.Fprintln(color.Output, len(todos))
 }
 

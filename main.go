@@ -21,8 +21,12 @@ var (
 )
 
 func main() {
-	var repo string
+	var (
+		repo     string
+		nameOnly bool
+	)
 	pflag.StringVarP(&repo, "repo", "R", "", "Select another repository using the [HOST/]OWNER/REPO format")
+	pflag.BoolVar(&nameOnly, "name-only", false, "Display only names of the files containing TODO comments")
 	pflag.Usage = func() {
 		fmt.Fprintf(color.Output, "%s\n\n", "View TODO comments in the PR diff.")
 		fmt.Fprintf(color.Output, "%s\n", bold("USAGE"))
@@ -35,22 +39,29 @@ func main() {
 	pflag.Parse()
 	args := pflag.Args()
 
-	if len(args) == 0 {
+	var pr string
+	switch len(args) {
+	case 0:
 		if repo != "" {
 			fmt.Fprintf(color.Output, "%s%s\n", red("✗"), " PR number, branch, or URL required when specifying repository\n")
 			pflag.Usage()
 			os.Exit(1)
 		}
-		runMain(repo, "")
-		return
-	} else if len(args) == 1 {
-		runMain(repo, args[0])
-		return
-	} else {
+		pr = ""
+	case 1:
+		pr = args[0]
+	default:
 		fmt.Fprintf(color.Output, "%s%s\n", red("✗"), " Too many arguments\n")
 		pflag.Usage()
 		os.Exit(1)
 	}
+
+	if nameOnly {
+		runNameOnly(repo, pr)
+	} else {
+		runMain(repo, pr)
+	}
+
 }
 
 func runMain(repo string, pr string) {
@@ -92,5 +103,46 @@ func runMain(repo string, pr string) {
 	for _, todo := range todos {
 		fmt.Fprintf(color.Output, "* %s\n", blue(todo.Filename+":"+strconv.Itoa(todo.Line)))
 		fmt.Fprintf(color.Output, "  %s\n\n", todo.Comment)
+	}
+}
+
+func runNameOnly(repo string, pr string) {
+	sp := spinner.New(spinner.CharSets[14], 40*time.Millisecond)
+	fetchingMsg := " Fetching PR diff..."
+	sp.Suffix = fetchingMsg
+	sp.Start()
+
+	args := []string{"pr", "diff"}
+	if repo != "" {
+		args = append(args, "-R", repo)
+	}
+	if pr != "" {
+		args = append(args, pr)
+	}
+	stdOut, stdErr, err := gh.Exec(args...)
+	sp.Stop()
+
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return
+	}
+
+	if stdErr.Len() > 0 {
+		fmt.Fprintf(os.Stderr, "Warning: %s\n", stdErr.String())
+	}
+
+	todos := internal.ParseDiff(stdOut.String())
+
+	if len(todos) == 0 {
+		return
+	}
+
+	files := make(map[string]struct{})
+	for _, todo := range todos {
+		files[todo.Filename] = struct{}{}
+	}
+
+	for file := range files {
+		fmt.Fprintln(color.Output, file)
 	}
 }

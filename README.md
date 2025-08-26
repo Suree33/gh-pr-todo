@@ -9,7 +9,7 @@ A GitHub CLI extension that extracts TODO comments from pull request diffs, help
 
 - 🔍 **Smart Detection**: Finds TODO, FIXME, HACK, NOTE, XXX, and BUG comments
 - 🎨 **Beautiful Output**: Colorized terminal output with loading indicators
-- 📋 **Multiple Formats**: Supports various comment styles (`//`, `#`, `<!--`, `;`, `/*`, markdown lists)
+- 📋 **Multiple Formats**: Supports various comment styles (`//`, `#`, `<!--`, `;`, `/*`)
 - ⚡ **Fast**: Efficient diff parsing with GitHub CLI integration
 - 🎯 **PR-Focused**: Only shows comments from your current changes
 
@@ -21,7 +21,7 @@ gh ext install Suree33/gh-pr-todo
 
 **Prerequisites:**
 - [GitHub CLI](https://cli.github.com/) installed and authenticated
-- Go 1.20.0 or later
+- Go 1.23 or later
 
 ## 📖 Usage
 
@@ -116,14 +116,8 @@ go build -o gh-pr-todo main.go
 ├── pkg/
 │   └── types/
 │       └── todo.go      # TODO type definitions
-└── scripts/             # Build scripts (if any)
+└── scripts/             # (optional) build scripts
 ```
-
-### Dependencies
-
-- [GitHub CLI Go library](https://github.com/cli/go-gh) - GitHub CLI integration
-- [Spinner](https://github.com/briandowns/spinner) - Loading animations  
-- [Color](https://github.com/fatih/color) - Terminal colors
 
 ## 🤝 Contributing
 

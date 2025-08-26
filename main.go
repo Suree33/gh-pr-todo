@@ -24,20 +24,44 @@ func main() {
 	var (
 		repo     string
 		nameOnly bool
+		isCount  bool
+		isHelp   bool
 	)
 	pflag.StringVarP(&repo, "repo", "R", "", "Select another repository using the [HOST/]OWNER/REPO format")
 	pflag.BoolVar(&nameOnly, "name-only", false, "Display only names of the files containing TODO comments")
+	pflag.BoolVarP(&isCount, "count", "c", false, "Display only the number of TODO comments")
+	pflag.BoolVarP(&isHelp, "help", "h", false, "Display help information")
 	pflag.Usage = func() {
 		fmt.Fprintf(color.Output, "%s\n\n", "View TODO comments in the PR diff.")
 		fmt.Fprintf(color.Output, "%s\n", bold("USAGE"))
 		fmt.Fprintf(color.Output, "  %s\n\n", "gh pr-todo [<number> | <url> | <branch>] [flags]")
 		fmt.Fprintf(color.Output, "%s\n", bold("FLAGS"))
-		fmt.Fprintf(color.Output, "  %s %s\n", "-R, --repo", "[HOST/]OWNER/REPO")
-		fmt.Fprintf(color.Output, "      %s\n", "Select another repository using the [HOST/]OWNER/REPO format")
-		fmt.Fprintf(color.Output, "  %s\n\n", "-h, --help")
+		maxLen := 0
+		pflag.VisitAll(func(f *pflag.Flag) {
+			nameLen := len(f.Name)
+			if f.Shorthand != "" {
+				nameLen += len(f.Shorthand) + 2
+			}
+			if nameLen > maxLen {
+				maxLen = nameLen
+			}
+		})
+		pflag.VisitAll(func(f *pflag.Flag) {
+			if f.Shorthand != "" {
+				fmt.Fprintf(color.Output, "  -%-*s, --%-*s %s\n", len(f.Shorthand), f.Shorthand, maxLen+2, f.Name, f.Usage)
+			} else {
+				fmt.Fprintf(color.Output, "      --%-*s %s\n", maxLen+2, f.Name, f.Usage)
+			}
+		})
+		fmt.Println()
 	}
 	pflag.Parse()
 	args := pflag.Args()
+
+	if isHelp {
+		pflag.Usage()
+		os.Exit(0)
+	}
 
 	var pr string
 	switch len(args) {
@@ -58,6 +82,8 @@ func main() {
 
 	if nameOnly {
 		runNameOnly(repo, pr)
+	} else if isCount {
+		runCount(repo, pr)
 	} else {
 		runMain(repo, pr)
 	}
@@ -104,6 +130,40 @@ func runMain(repo string, pr string) {
 		fmt.Fprintf(color.Output, "* %s\n", blue(todo.Filename+":"+strconv.Itoa(todo.Line)))
 		fmt.Fprintf(color.Output, "  %s\n\n", todo.Comment)
 	}
+}
+
+func runCount(repo string, pr string) {
+	sp := spinner.New(spinner.CharSets[14], 40*time.Millisecond)
+	fetchingMsg := " Fetching PR diff..."
+	sp.Suffix = fetchingMsg
+	sp.Start()
+
+	args := []string{"pr", "diff"}
+	if repo != "" {
+		args = append(args, "-R", repo)
+	}
+	if pr != "" {
+		args = append(args, pr)
+	}
+	stdOut, stdErr, err := gh.Exec(args...)
+	sp.Stop()
+
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return
+	}
+
+	if stdErr.Len() > 0 {
+		fmt.Fprintf(os.Stderr, "Warning: %s\n", stdErr.String())
+	}
+
+	todos := internal.ParseDiff(stdOut.String())
+
+	if len(todos) == 0 {
+		return
+	}
+
+	fmt.Fprintln(color.Output, len(todos))
 }
 
 func runNameOnly(repo string, pr string) {

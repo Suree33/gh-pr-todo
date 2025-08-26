@@ -52,12 +52,20 @@ gh pr-todo https://github.com/owner/repo/pull/789
 
 # Specify a branch
 gh pr-todo feature-branch
+
+# Display only names of the files containing TODO comments
+gh pr-todo --name-only
+
+# Display only the number of TODO comments
+gh pr-todo -c
 ```
 
 ### Command Options
 
-- `-R, --repo [HOST/]OWNER/REPO`: Select another repository using the [HOST/]OWNER/REPO format
 - `[<number> | <url> | <branch>]`: Specify a PR by number, URL, or branch name
+- `-R, --repo [HOST/]OWNER/REPO`: Select another repository using the [HOST/]OWNER/REPO format
+- `--name-only`: Display only names of the files containing TODO comments
+- `-c, --count`: Display only the number of TODO comments
 
 ### Example Output
 
@@ -116,7 +124,6 @@ go build -o gh-pr-todo main.go
 ├── pkg/
 │   └── types/
 │       └── todo.go      # TODO type definitions
-└── scripts/             # (optional) build scripts
 ```
 
 ## 🤝 Contributing

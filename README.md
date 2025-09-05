@@ -58,12 +58,16 @@ gh pr-todo --name-only
 
 # Display only the number of TODO comments
 gh pr-todo -c
+
+# Group TODO comments by file (or type)
+gh pr-todo --group-by file
 ```
 
 ### Command Options
 
 - `[<number> | <url> | <branch>]`: Specify a PR by number, URL, or branch name
 - `-R, --repo [HOST/]OWNER/REPO`: Select another repository using the [HOST/]OWNER/REPO format
+- `--group-by`: Group TODO comments by file or type
 - `--name-only`: Display only names of the files containing TODO comments
 - `-c, --count`: Display only the number of TODO comments
 

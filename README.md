@@ -21,7 +21,6 @@ gh ext install Suree33/gh-pr-todo
 
 **Prerequisites:**
 - [GitHub CLI](https://cli.github.com/) installed and authenticated
-- Go 1.23 or later
 
 ## 📖 Usage
 

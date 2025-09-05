@@ -2,11 +2,15 @@ package main
 
 import (
 	"fmt"
+	"maps"
 	"os"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Suree33/gh-pr-todo/internal"
+	"github.com/Suree33/gh-pr-todo/pkg/types"
 	"github.com/briandowns/spinner"
 	"github.com/cli/go-gh/v2"
 	"github.com/fatih/color"
@@ -14,10 +18,11 @@ import (
 )
 
 var (
-	bold  = color.New(color.Bold).SprintFunc()
-	green = color.New(color.FgGreen).SprintFunc()
-	red   = color.New(color.FgRed).SprintFunc()
-	blue  = color.New(color.FgBlue).SprintFunc()
+	bold    = color.New(color.Bold).SprintFunc()
+	green   = color.New(color.FgGreen).SprintFunc()
+	red     = color.New(color.FgRed).SprintFunc()
+	blue    = color.New(color.FgBlue).SprintFunc()
+	magenta = color.New(color.FgMagenta).SprintFunc()
 )
 
 func main() {
@@ -26,11 +31,13 @@ func main() {
 		nameOnly bool
 		isCount  bool
 		isHelp   bool
+		groupBy  types.GroupBy = types.GroupByNone
 	)
 	pflag.StringVarP(&repo, "repo", "R", "", "Select another repository using the [HOST/]OWNER/REPO format")
 	pflag.BoolVar(&nameOnly, "name-only", false, "Display only names of the files containing TODO comments")
 	pflag.BoolVarP(&isCount, "count", "c", false, "Display only the number of TODO comments")
 	pflag.BoolVarP(&isHelp, "help", "h", false, "Display help information")
+	pflag.Var(&groupBy, "group-by", "Group TODO comments by: \"file\" or \"type\"")
 	pflag.Usage = func() {
 		fmt.Fprintf(color.Output, "%s\n\n", "View TODO comments in the PR diff.")
 		fmt.Fprintf(color.Output, "%s\n", bold("USAGE"))
@@ -85,12 +92,11 @@ func main() {
 	} else if isCount {
 		runCount(repo, pr)
 	} else {
-		runMain(repo, pr)
+		runMain(repo, pr, groupBy)
 	}
-
 }
 
-func runMain(repo string, pr string) {
+func runMain(repo string, pr string, groupBy types.GroupBy) {
 	sp := spinner.New(spinner.CharSets[14], 40*time.Millisecond)
 	fetchingMsg := " Fetching PR diff..."
 	sp.Suffix = fetchingMsg
@@ -126,9 +132,43 @@ func runMain(repo string, pr string) {
 	}
 
 	fmt.Fprintf(color.Output, bold("\nFound %d TODO comment(s)\n\n"), len(todos))
-	for _, todo := range todos {
-		fmt.Fprintf(color.Output, "* %s\n", blue(todo.Filename+":"+strconv.Itoa(todo.Line)))
-		fmt.Fprintf(color.Output, "  %s\n\n", todo.Comment)
+	switch groupBy {
+	case types.GroupByNone:
+		for _, todo := range todos {
+			fmt.Fprintf(color.Output, "* %s\n", blue(todo.Filename+":"+strconv.Itoa(todo.Line)))
+			fmt.Fprintf(color.Output, "  %s\n\n", todo.Comment)
+		}
+	case types.GroupByFile:
+		files := make(map[string][]types.TODO)
+		maxLineNumberLen := 0
+		for _, todo := range todos {
+			files[todo.Filename] = append(files[todo.Filename], todo)
+			if len(strconv.Itoa(todo.Line)) > maxLineNumberLen {
+				maxLineNumberLen = len(strconv.Itoa(todo.Line))
+			}
+		}
+		for filename, todos := range files {
+			fmt.Fprintf(color.Output, "* %s\n", blue(filename))
+			for _, todo := range todos {
+				fmt.Fprintf(color.Output, "  %s%s: %s\n", strings.Repeat(" ", maxLineNumberLen-int(len(strconv.Itoa(todo.Line)))), green(strconv.Itoa(todo.Line)), todo.Comment)
+			}
+			fmt.Println()
+		}
+	case types.GroupByType:
+		todoTypes := make(map[string][]types.TODO)
+		for _, todo := range todos {
+			todoTypes[todo.Type] = append(todoTypes[todo.Type], todo)
+		}
+		todoTypeKeys := slices.Collect(maps.Keys(todoTypes))
+		slices.Sort(todoTypeKeys)
+		for _, todoType := range todoTypeKeys {
+			todos := todoTypes[todoType]
+			fmt.Fprintf(color.Output, "%s%s%s\n", bold("["), bold(magenta(todoType)), bold("]"))
+			for _, todo := range todos {
+				fmt.Fprintf(color.Output, "* %s\n", blue(todo.Filename+":"+strconv.Itoa(todo.Line)))
+				fmt.Fprintf(color.Output, "  %s\n\n", todo.Comment)
+			}
+		}
 	}
 }
 

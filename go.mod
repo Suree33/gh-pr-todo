@@ -6,7 +6,7 @@ require (
 	github.com/briandowns/spinner v1.23.2
 	github.com/cli/go-gh/v2 v2.12.2
 	github.com/fatih/color v1.18.0
-	github.com/spf13/pflag v1.0.7
+	github.com/spf13/pflag v1.0.10
 )
 
 require (

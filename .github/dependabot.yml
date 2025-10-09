@@ -4,5 +4,8 @@ updates:
   - package-ecosystem: gomod
     directory: "/"
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
     schedule:
-      interval: "monthly"
+      interval: "daily"

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"maps"
 	"os"
@@ -116,7 +117,7 @@ func runMain(repo string, pr string, groupBy types.GroupBy) {
 		fmt.Fprintf(color.Output, "%s%s\n", green("✔"), fetchingMsg)
 	} else {
 		fmt.Fprintf(color.Output, "%s%s\n", red("✗"), fetchingMsg)
-		fmt.Fprintln(os.Stderr, err)
+		printExecError(&stdErr, err)
 		return
 	}
 
@@ -189,7 +190,7 @@ func runCount(repo string, pr string) {
 	sp.Stop()
 
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		printExecError(&stdErr, err)
 		return
 	}
 
@@ -219,7 +220,7 @@ func runNameOnly(repo string, pr string) {
 	sp.Stop()
 
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		printExecError(&stdErr, err)
 		return
 	}
 
@@ -240,5 +241,13 @@ func runNameOnly(repo string, pr string) {
 
 	for file := range files {
 		fmt.Fprintln(color.Output, file)
+	}
+}
+
+func printExecError(stdErr *bytes.Buffer, err error) {
+	if stdErr.Len() > 0 {
+		fmt.Fprint(os.Stderr, stdErr.String())
+	} else if err != nil {
+		fmt.Fprintln(os.Stderr, err)
 	}
 }

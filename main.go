@@ -103,14 +103,7 @@ func runMain(repo string, pr string, groupBy types.GroupBy) {
 	sp.Suffix = fetchingMsg
 	sp.Start()
 
-	args := []string{"pr", "diff"}
-	if repo != "" {
-		args = append(args, "-R", repo)
-	}
-	if pr != "" {
-		args = append(args, pr)
-	}
-	stdOut, stdErr, err := gh.Exec(args...)
+	stdOut, stdErr, err := fetchPRDiff(repo, pr)
 	sp.Stop()
 
 	if err == nil {
@@ -179,14 +172,7 @@ func runCount(repo string, pr string) {
 	sp.Suffix = fetchingMsg
 	sp.Start()
 
-	args := []string{"pr", "diff"}
-	if repo != "" {
-		args = append(args, "-R", repo)
-	}
-	if pr != "" {
-		args = append(args, pr)
-	}
-	stdOut, stdErr, err := gh.Exec(args...)
+	stdOut, stdErr, err := fetchPRDiff(repo, pr)
 	sp.Stop()
 
 	if err != nil {
@@ -209,14 +195,7 @@ func runNameOnly(repo string, pr string) {
 	sp.Suffix = fetchingMsg
 	sp.Start()
 
-	args := []string{"pr", "diff"}
-	if repo != "" {
-		args = append(args, "-R", repo)
-	}
-	if pr != "" {
-		args = append(args, pr)
-	}
-	stdOut, stdErr, err := gh.Exec(args...)
+	stdOut, stdErr, err := fetchPRDiff(repo, pr)
 	sp.Stop()
 
 	if err != nil {
@@ -242,6 +221,18 @@ func runNameOnly(repo string, pr string) {
 	for file := range files {
 		fmt.Fprintln(color.Output, file)
 	}
+}
+
+func fetchPRDiff(repo, pr string) (bytes.Buffer, bytes.Buffer, error) {
+	args := []string{"pr", "diff"}
+	if repo != "" {
+		args = append(args, "-R", repo)
+	}
+	if pr != "" {
+		args = append(args, pr)
+	}
+	stdOut, stdErr, err := gh.Exec(args...)
+	return stdOut, stdErr, err
 }
 
 func printExecError(stdErr *bytes.Buffer, err error) {

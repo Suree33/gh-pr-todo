@@ -18,6 +18,7 @@ import (
 	"github.com/spf13/pflag"
 )
 
+// TODO: 対応色を増やす
 var (
 	bold    = color.New(color.Bold).SprintFunc()
 	green   = color.New(color.FgGreen).SprintFunc()

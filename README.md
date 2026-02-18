@@ -5,15 +5,15 @@
 
 A GitHub CLI extension that extracts TODO comments from pull request diffs, helping you track action items and reminders in your code changes.
 
-## ✨ Features
+## Features
 
-- 🔍 **Smart Detection**: Finds TODO, FIXME, HACK, NOTE, XXX, and BUG comments
-- 🎨 **Beautiful Output**: Colorized terminal output with loading indicators
-- 📋 **Multiple Formats**: Supports various comment styles (`//`, `#`, `<!--`, `;`, `/*`)
-- ⚡ **Fast**: Efficient diff parsing with GitHub CLI integration
-- 🎯 **PR-Focused**: Only shows comments from your current changes
+- **Smart Detection**: Finds TODO, FIXME, HACK, NOTE, XXX, and BUG comments
+- **Beautiful Output**: Colorized terminal output with loading indicators
+- **Multiple Formats**: Supports various comment styles (`//`, `#`, `<!--`, `;`, `/*`)
+- **Fast**: Efficient diff parsing with GitHub CLI integration
+- **PR-Focused**: Only shows comments from your current changes
 
-## 🚀 Installation
+## Installation
 
 ```bash
 gh ext install Suree33/gh-pr-todo
@@ -22,7 +22,7 @@ gh ext install Suree33/gh-pr-todo
 **Prerequisites:**
 - [GitHub CLI](https://cli.github.com/) installed and authenticated
 
-## 📖 Usage
+## Usage
 
 ### Basic Usage
 
@@ -87,7 +87,7 @@ Found 3 TODO comment(s)
   <!-- NOTE: Update this section after v2.0 release -->
 ```
 
-## 🔧 Supported Comment Formats
+## Supported Comment Formats
 
 The tool recognizes TODO-style comments in various formats:
 
@@ -99,7 +99,7 @@ The tool recognizes TODO-style comments in various formats:
 | **HTML/XML** | `<!-- NOTE: Review this section -->` |
 | **Assembly/Config** | `; XXX: Temporary workaround` |
 
-## 🏗️ Supported Keywords
+## Supported Keywords
 
 - `TODO`
 - `FIXME`
@@ -108,7 +108,7 @@ The tool recognizes TODO-style comments in various formats:
 - `XXX`
 - `BUG`
 
-## 🛠️ Development
+## Development
 
 ### Building from Source
 
@@ -129,7 +129,7 @@ go build -o gh-pr-todo main.go
 │       └── todo.go      # TODO type definitions
 ```
 
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
@@ -137,10 +137,10 @@ go build -o gh-pr-todo main.go
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📝 License
+## License
 
 This project is licensed under the terms specified in the [LICENSE](LICENSE) file.
 
-## 🐛 Issues & Feature Requests
+## Issues & Feature Requests
 
 Found a bug or have a feature idea? Please open an issue on [GitHub](https://github.com/Suree33/gh-pr-todo/issues).

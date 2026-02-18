@@ -1,41 +1,74 @@
 name: CI
 
 on:
-    pull_request:
-        types:
-            - opened
-            - reopened
-            - synchronize
-    push:
-        branches:
-            - '*'
-        tags-ignore:
-            - '*'
+  pull_request:
+  push:
+    branches:
+      - main
 
 permissions:
-    contents: read
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
-    build:
-        strategy:
-            fail-fast: false
-            matrix:
-                os: [ubuntu-latest, macos-latest]
-        runs-on: ${{ matrix.os }}
+  fmt:
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
 
-        steps:
-            - uses: actions/checkout@v5
-            
-            - name: Setup Go
-              uses: actions/setup-go@v6
-              with:
-                go-version-file: go.mod
-            
-            - name: Check gofmt
-              run: test -z "$(gofmt -l .)"
-            
-            - name: Build
-              run: go build -v ./...
+    steps:
+      - uses: actions/checkout@v6
 
-            - name: Test
-              run: go test -v ./...
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Check gofmt
+        run: test -z "$(gofmt -l .)"
+
+  build:
+    needs: fmt
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: go build -v ./...
+
+  test:
+    needs: fmt
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test -v ./...

@@ -18,7 +18,7 @@ defaults:
     shell: bash
 
 jobs:
-  fmt:
+  lint:
     timeout-minutes: 15
     runs-on: ubuntu-latest
 
@@ -30,11 +30,11 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Check gofmt
-        run: test -z "$(gofmt -l . | tee /dev/stderr)"
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9
 
   build:
-    needs: fmt
+    needs: lint
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -54,7 +54,7 @@ jobs:
         run: go build -v ./...
 
   test:
-    needs: fmt
+    needs: lint
     timeout-minutes: 15
     strategy:
       fail-fast: false

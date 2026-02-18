@@ -31,7 +31,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Check gofmt
-        run: test -z "$(gofmt -l .)"
+        run: gofmt -l .
 
   build:
     needs: fmt

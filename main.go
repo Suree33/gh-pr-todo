@@ -32,7 +32,7 @@ func main() {
 		nameOnly bool
 		isCount  bool
 		isHelp   bool
-		groupBy  types.GroupBy = types.GroupByNone
+		groupBy  = types.GroupByNone
 	)
 	pflag.StringVarP(&repo, "repo", "R", "", "Select another repository using the [HOST/]OWNER/REPO format")
 	pflag.BoolVar(&nameOnly, "name-only", false, "Display only names of the files containing TODO comments")

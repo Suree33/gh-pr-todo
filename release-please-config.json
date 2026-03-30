@@ -3,6 +3,36 @@
   "include-component-in-tag": false,
   "bump-minor-pre-major": true,
   "bump-patch-for-minor-pre-major": true,
+  "changelog-sections": [
+    {
+      "type": "feat",
+      "section": "Features"
+    },
+    {
+      "type": "fix",
+      "section": "Bug Fixes"
+    },
+    {
+      "type": "docs",
+      "section": "Documentation"
+    },
+    {
+      "type": "ci",
+      "section": "CI"
+    },
+    {
+      "type": "refactor",
+      "section": "Refactoring"
+    },
+    {
+      "type": "chore",
+      "section": "Miscellaneous Chores"
+    },
+    {
+      "type": "build",
+      "section": "Miscellaneous Chores"
+    }
+  ],
   "packages": {
     ".": {}
   }

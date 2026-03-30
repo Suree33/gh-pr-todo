@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.4.1](https://github.com/Suree33/gh-pr-todo/compare/v0.4.0...v0.4.1) (2026-03-30)
+
+
+### CI
+
+* refactor ([#29](https://github.com/Suree33/gh-pr-todo/issues/29)) ([d7fe849](https://github.com/Suree33/gh-pr-todo/commit/d7fe849a7110a54ae87de8389f79ae1106f355cc))
+
+
+### Miscellaneous Chores
+
+* add release-please ([#34](https://github.com/Suree33/gh-pr-todo/issues/34)) ([41e9b81](https://github.com/Suree33/gh-pr-todo/commit/41e9b813ea64b701d5a7067810142e66b1d06898))
+* **ci:** add changelog-sections to release-please-config ([#36](https://github.com/Suree33/gh-pr-todo/issues/36)) ([9615d2d](https://github.com/Suree33/gh-pr-todo/commit/9615d2dbb6bbcce4eb98182a248063a269eb0cce))
+* **dependabot:** add github-actions ([#31](https://github.com/Suree33/gh-pr-todo/issues/31)) ([77dc50f](https://github.com/Suree33/gh-pr-todo/commit/77dc50f8084d068753bb1159c001102900cf32ee))
+* **dependabot:** remove cooldown.semver-major-days ([53e1087](https://github.com/Suree33/gh-pr-todo/commit/53e1087d3e9819668a486254044144e9e3c507aa))
+* **deps:** bump actions/checkout from 5 to 6 ([#33](https://github.com/Suree33/gh-pr-todo/issues/33)) ([63cf10f](https://github.com/Suree33/gh-pr-todo/commit/63cf10fd9f70e3c8d3fe022a9101091eaa63ed11))
+* **deps:** bump github.com/cli/go-gh/v2 from 2.12.2 to 2.13.0 ([8ad4099](https://github.com/Suree33/gh-pr-todo/commit/8ad40996e81b0f56db96496299950995511e39b2))
+* **deps:** bump github.com/cli/go-gh/v2 from 2.12.2 to 2.13.0 ([eff1adc](https://github.com/Suree33/gh-pr-todo/commit/eff1adcff8d135e1bf69c900b62f369ba77424cb))
+* **deps:** bump github.com/fatih/color from 1.18.0 to 1.19.0 ([#30](https://github.com/Suree33/gh-pr-todo/issues/30)) ([cbb4e1c](https://github.com/Suree33/gh-pr-todo/commit/cbb4e1cd7dd21fba2f2c9ac3e4d36066c1566a1e))
+* replace github_token with GitHub App Token ([#37](https://github.com/Suree33/gh-pr-todo/issues/37)) ([a199229](https://github.com/Suree33/gh-pr-todo/commit/a199229746d95ffac7edf921c8dbedbee66706a5))
+
 ## [0.4.0](https://github.com/Suree33/gh-pr-todo/releases/tag/v0.4.0) (2025-11-08)
 
 ### Features

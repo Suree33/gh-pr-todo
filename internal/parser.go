@@ -2,6 +2,7 @@
 package internal
 
 import (
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -45,7 +46,7 @@ func ParseDiff(diffOutput string) []types.TODO {
 
 	for _, line := range lines {
 		if after, ok := strings.CutPrefix(line, "+++ b/"); ok {
-			currentFile = after
+			currentFile = path.Clean(after)
 		} else if strings.HasPrefix(line, "@@") {
 			if matches := hunkRegex.FindStringSubmatch(line); len(matches) > 1 {
 				if startLine, err := strconv.Atoi(matches[1]); err == nil {
@@ -83,7 +84,7 @@ func extractFileChanges(diffOutput string) []fileChange {
 			if current != nil {
 				changes = append(changes, *current)
 			}
-			current = &fileChange{path: after}
+			current = &fileChange{path: path.Clean(after)}
 		} else if strings.HasPrefix(line, "@@") {
 			if matches := hunkRegex.FindStringSubmatch(line); len(matches) > 1 {
 				if startLine, err := strconv.Atoi(matches[1]); err == nil {

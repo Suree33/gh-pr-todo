@@ -1,6 +1,7 @@
+// Package types defines shared types used across gh-pr-todo.
 package types
 
-// Represents a TODO comment found in a diff
+// TODO represents a TODO comment found in a diff
 type TODO struct {
 	Filename string
 	// The line number in the file

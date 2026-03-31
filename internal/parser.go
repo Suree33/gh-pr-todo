@@ -1,3 +1,4 @@
+// Package internal provides diff parsing utilities for extracting TODO comments.
 package internal
 
 import (
@@ -13,7 +14,7 @@ var (
 	hunkRegex = regexp.MustCompile(`^@@\s+\-\d+(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@`)
 )
 
-// Extracts TODO comments from git diff output
+// ParseDiff extracts TODO comments from git diff output
 func ParseDiff(diffOutput string) []types.TODO {
 	var todos []types.TODO
 	lines := strings.Split(diffOutput, "\n")

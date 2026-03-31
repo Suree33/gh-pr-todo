@@ -113,14 +113,21 @@ func extractFileChanges(diffOutput string) []fileChange {
 
 // ParseDiffWithContents extracts TODO comments using Tree-sitter for supported
 // languages, falling back to regex for unsupported files.
-// files maps file paths to their full post-change content.
+// files maps file paths to their full post-change content. For files not present
+// in the map, TODOs are extracted from the diff output using regex.
 func ParseDiffWithContents(diffOutput string, files map[string][]byte) []types.TODO {
 	changes := extractFileChanges(diffOutput)
 	var todos []types.TODO
+	var missingFiles []string
 
 	for _, fc := range changes {
+		if len(fc.addedRanges) == 0 {
+			continue
+		}
+
 		content, ok := files[fc.path]
-		if !ok || len(fc.addedRanges) == 0 {
+		if !ok {
+			missingFiles = append(missingFiles, fc.path)
 			continue
 		}
 
@@ -128,6 +135,18 @@ func ParseDiffWithContents(diffOutput string, files map[string][]byte) []types.T
 			todos = append(todos, found...)
 		} else {
 			todos = append(todos, parseTODOsWithRegex(fc, content)...)
+		}
+	}
+
+	if len(missingFiles) > 0 {
+		missing := make(map[string]bool, len(missingFiles))
+		for _, f := range missingFiles {
+			missing[f] = true
+		}
+		for _, t := range ParseDiff(diffOutput) {
+			if missing[t.Filename] {
+				todos = append(todos, t)
+			}
 		}
 	}
 

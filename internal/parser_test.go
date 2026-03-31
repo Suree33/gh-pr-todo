@@ -485,7 +485,7 @@ index 1234567..abcdefg 100644
 			expected: nil,
 		},
 		{
-			name: "File in diff but not in contents (skipped)",
+			name: "File in diff but not in contents (falls back to diff regex)",
 			diff: `diff --git a/missing.go b/missing.go
 index 1234567..abcdefg 100644
 --- a/missing.go
@@ -495,8 +495,10 @@ index 1234567..abcdefg 100644
  
 +// TODO: missing file
  func main() {}`,
-			files:    map[string][]byte{},
-			expected: nil,
+			files: map[string][]byte{},
+			expected: []types.TODO{
+				{Filename: "missing.go", Line: 3, Comment: "// TODO: missing file", Type: "TODO"},
+			},
 		},
 	}
 

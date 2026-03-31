@@ -109,9 +109,9 @@ func collectTODOs(repo, pr string) ([]types.TODO, error) {
 	}
 
 	diffOutput := stdOut.String()
-	files, fetchErr := fetchChangedFileContents(repo, pr, diffOutput)
-	if fetchErr != nil || len(files) == 0 {
-		return internal.ParseDiff(diffOutput), nil
+	files, _ := fetchChangedFileContents(repo, pr, diffOutput)
+	if files == nil {
+		files = make(map[string][]byte)
 	}
 
 	return internal.ParseDiffWithContents(diffOutput, files), nil

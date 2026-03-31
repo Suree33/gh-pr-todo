@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"os"
+	"path"
 	"slices"
 	"strconv"
 	"strings"
@@ -97,28 +99,40 @@ func main() {
 	}
 }
 
+func collectTODOs(repo, pr string) ([]types.TODO, error) {
+	stdOut, stdErr, err := fetchPRDiff(repo, pr)
+	if err != nil {
+		return nil, fmt.Errorf("%s", strings.TrimSpace(stdErr.String()))
+	}
+	if stdErr.Len() > 0 {
+		fmt.Fprintf(os.Stderr, "Warning: %s\n", stdErr.String())
+	}
+
+	diffOutput := stdOut.String()
+	files, fetchErr := fetchChangedFileContents(repo, pr, diffOutput)
+	if fetchErr != nil || len(files) == 0 {
+		return internal.ParseDiff(diffOutput), nil
+	}
+
+	return internal.ParseDiffWithContents(diffOutput, files), nil
+}
+
 func runMain(repo string, pr string, groupBy types.GroupBy) {
 	sp := spinner.New(spinner.CharSets[14], 40*time.Millisecond)
 	fetchingMsg := " Fetching PR diff..."
 	sp.Suffix = fetchingMsg
 	sp.Start()
 
-	stdOut, stdErr, err := fetchPRDiff(repo, pr)
+	todos, err := collectTODOs(repo, pr)
 	sp.Stop()
 
 	if err == nil {
 		fmt.Fprintf(color.Output, "%s%s\n", green("✔"), fetchingMsg)
 	} else {
 		fmt.Fprintf(color.Output, "%s%s\n", red("✗"), fetchingMsg)
-		printExecError(&stdErr, err)
+		fmt.Fprintln(os.Stderr, err)
 		return
 	}
-
-	if stdErr.Len() > 0 {
-		fmt.Fprintf(os.Stderr, "Warning: %s\n", stdErr.String())
-	}
-
-	todos := internal.ParseDiff(stdOut.String())
 
 	if len(todos) == 0 {
 		fmt.Fprintf(color.Output, "\nNo TODO comments found in the diff.\n")
@@ -167,47 +181,21 @@ func runMain(repo string, pr string, groupBy types.GroupBy) {
 }
 
 func runCount(repo string, pr string) {
-	sp := spinner.New(spinner.CharSets[14], 40*time.Millisecond)
-	fetchingMsg := " Fetching PR diff..."
-	sp.Suffix = fetchingMsg
-	sp.Start()
-
-	stdOut, stdErr, err := fetchPRDiff(repo, pr)
-	sp.Stop()
-
+	todos, err := collectTODOs(repo, pr)
 	if err != nil {
-		printExecError(&stdErr, err)
+		fmt.Fprintln(os.Stderr, err)
 		return
 	}
-
-	if stdErr.Len() > 0 {
-		fmt.Fprintf(os.Stderr, "Warning: %s\n", stdErr.String())
-	}
-
-	todos := internal.ParseDiff(stdOut.String())
 
 	fmt.Fprintln(color.Output, len(todos))
 }
 
 func runNameOnly(repo string, pr string) {
-	sp := spinner.New(spinner.CharSets[14], 40*time.Millisecond)
-	fetchingMsg := " Fetching PR diff..."
-	sp.Suffix = fetchingMsg
-	sp.Start()
-
-	stdOut, stdErr, err := fetchPRDiff(repo, pr)
-	sp.Stop()
-
+	todos, err := collectTODOs(repo, pr)
 	if err != nil {
-		printExecError(&stdErr, err)
+		fmt.Fprintln(os.Stderr, err)
 		return
 	}
-
-	if stdErr.Len() > 0 {
-		fmt.Fprintf(os.Stderr, "Warning: %s\n", stdErr.String())
-	}
-
-	todos := internal.ParseDiff(stdOut.String())
 
 	if len(todos) == 0 {
 		return
@@ -223,6 +211,69 @@ func runNameOnly(repo string, pr string) {
 	}
 }
 
+type prMeta struct {
+	HeadRefOid     string `json:"headRefOid"`
+	HeadRepository struct {
+		Owner struct {
+			Login string `json:"login"`
+		} `json:"owner"`
+		Name string `json:"name"`
+	} `json:"headRepository"`
+}
+
+func fetchChangedFileContents(repo, pr, diffOutput string) (map[string][]byte, error) {
+	args := []string{"pr", "view", "--json", "headRefOid,headRepository"}
+	if repo != "" {
+		args = append(args, "-R", repo)
+	}
+	if pr != "" {
+		args = append(args, pr)
+	}
+	stdOut, _, err := gh.Exec(args...)
+	if err != nil {
+		return nil, err
+	}
+
+	var meta prMeta
+	if err := json.Unmarshal(stdOut.Bytes(), &meta); err != nil {
+		return nil, err
+	}
+
+	nwo := meta.HeadRepository.Owner.Login + "/" + meta.HeadRepository.Name
+	sha := meta.HeadRefOid
+	if nwo == "/" || sha == "" {
+		return nil, fmt.Errorf("could not determine PR head")
+	}
+
+	paths := extractChangedPaths(diffOutput)
+	files := make(map[string][]byte, len(paths))
+	for _, p := range paths {
+		apiPath := fmt.Sprintf("repos/%s/contents/%s?ref=%s", nwo, p, sha)
+		out, _, err := gh.Exec("api", apiPath, "-H", "Accept: application/vnd.github.raw+json")
+		if err != nil {
+			continue
+		}
+		files[p] = out.Bytes()
+	}
+
+	return files, nil
+}
+
+func extractChangedPaths(diffOutput string) []string {
+	var paths []string
+	seen := make(map[string]struct{})
+	for _, line := range strings.Split(diffOutput, "\n") {
+		if after, ok := strings.CutPrefix(line, "+++ b/"); ok {
+			p := path.Clean(after)
+			if _, exists := seen[p]; !exists {
+				seen[p] = struct{}{}
+				paths = append(paths, p)
+			}
+		}
+	}
+	return paths
+}
+
 func fetchPRDiff(repo, pr string) (bytes.Buffer, bytes.Buffer, error) {
 	args := []string{"pr", "diff"}
 	if repo != "" {
@@ -233,12 +284,4 @@ func fetchPRDiff(repo, pr string) (bytes.Buffer, bytes.Buffer, error) {
 	}
 	stdOut, stdErr, err := gh.Exec(args...)
 	return stdOut, stdErr, err
-}
-
-func printExecError(stdErr *bytes.Buffer, err error) {
-	if stdErr.Len() > 0 {
-		fmt.Fprint(os.Stderr, stdErr.String())
-	} else if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-	}
 }

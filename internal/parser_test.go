@@ -332,6 +332,184 @@ index 1234567..abcdefg 100644
 	}
 }
 
+func TestParseDiffWithContents(t *testing.T) {
+	tests := []struct {
+		name     string
+		diff     string
+		files    map[string][]byte
+		expected []types.TODO
+	}{
+		{
+			name: "Go TODO comment via Tree-sitter",
+			diff: `diff --git a/main.go b/main.go
+index 1234567..abcdefg 100644
+--- a/main.go
++++ b/main.go
+@@ -1,3 +1,4 @@
+ package main
+ 
++// TODO: implement this function
+ func main() {}`,
+			files: map[string][]byte{
+				"main.go": []byte("package main\n\n// TODO: implement this function\nfunc main() {}\n"),
+			},
+			expected: []types.TODO{
+				{Filename: "main.go", Line: 3, Comment: "// TODO: implement this function", Type: "TODO"},
+			},
+		},
+		{
+			name: "Python FIXME comment via Tree-sitter",
+			diff: `diff --git a/app.py b/app.py
+index 1234567..abcdefg 100644
+--- a/app.py
++++ b/app.py
+@@ -1,3 +1,4 @@
+ import os
+ 
++# FIXME: handle edge case
+ def main():`,
+			files: map[string][]byte{
+				"app.py": []byte("import os\n\n# FIXME: handle edge case\ndef main():\n"),
+			},
+			expected: []types.TODO{
+				{Filename: "app.py", Line: 3, Comment: "# FIXME: handle edge case", Type: "FIXME"},
+			},
+		},
+		{
+			name: "Block comment with TODO on added line only",
+			diff: `diff --git a/main.go b/main.go
+index 1234567..abcdefg 100644
+--- a/main.go
++++ b/main.go
+@@ -1,3 +1,6 @@
+ package main
+ 
++/* TODO: first task
++ * NOTE: second note
++ */
+ func main() {}`,
+			files: map[string][]byte{
+				"main.go": []byte("package main\n\n/* TODO: first task\n * NOTE: second note\n */\nfunc main() {}\n"),
+			},
+			expected: []types.TODO{
+				{Filename: "main.go", Line: 3, Comment: "/* TODO: first task", Type: "TODO"},
+			},
+		},
+		{
+			name: "Unchanged TODO comment in existing block is ignored",
+			diff: `diff --git a/main.go b/main.go
+index 1234567..abcdefg 100644
+--- a/main.go
++++ b/main.go
+@@ -1,4 +1,5 @@
+ package main
+ 
+ // TODO: existing todo
++var x = 1
+ func main() {}`,
+			files: map[string][]byte{
+				"main.go": []byte("package main\n\n// TODO: existing todo\nvar x = 1\nfunc main() {}\n"),
+			},
+			expected: nil,
+		},
+		{
+			name: "Unsupported file falls back to regex",
+			diff: `diff --git a/config.xyz b/config.xyz
+index 1234567..abcdefg 100644
+--- a/config.xyz
++++ b/config.xyz
+@@ -1,3 +1,4 @@
+ setting1=value
+ 
++# TODO: add more settings
+ setting2=value`,
+			files: map[string][]byte{
+				"config.xyz": []byte("setting1=value\n\n# TODO: add more settings\nsetting2=value\n"),
+			},
+			expected: []types.TODO{
+				{Filename: "config.xyz", Line: 3, Comment: "# TODO: add more settings", Type: "TODO"},
+			},
+		},
+		{
+			name: "Multiple files mixed (Go Tree-sitter + unknown regex fallback)",
+			diff: `diff --git a/main.go b/main.go
+index 1234567..abcdefg 100644
+--- a/main.go
++++ b/main.go
+@@ -1,3 +1,4 @@
+ package main
+ 
++// HACK: workaround
+ func main() {}
+
+diff --git a/config.xyz b/config.xyz
+index 7890123..defghij 100644
+--- a/config.xyz
++++ b/config.xyz
+@@ -1,2 +1,3 @@
+ hello
++// BUG: known issue
+ world`,
+			files: map[string][]byte{
+				"main.go":    []byte("package main\n\n// HACK: workaround\nfunc main() {}\n"),
+				"config.xyz": []byte("hello\n// BUG: known issue\nworld\n"),
+			},
+			expected: []types.TODO{
+				{Filename: "main.go", Line: 3, Comment: "// HACK: workaround", Type: "HACK"},
+				{Filename: "config.xyz", Line: 2, Comment: "// BUG: known issue", Type: "BUG"},
+			},
+		},
+		{
+			name: "HTML comment detected in Markdown is ignored (not real code comment)",
+			diff: `diff --git a/README.md b/README.md
+index 1234567..abcdefg 100644
+--- a/README.md
++++ b/README.md
+@@ -1,3 +1,7 @@
+ # Title
+ 
++` + "```go" + `
++// TODO: inside code block
++` + "```" + `
++
+ Some text`,
+			files: map[string][]byte{
+				"README.md": []byte("# Title\n\n```go\n// TODO: inside code block\n```\n\nSome text\n"),
+			},
+			expected: nil,
+		},
+		{
+			name:     "Empty diff with contents",
+			diff:     "",
+			files:    map[string][]byte{},
+			expected: nil,
+		},
+		{
+			name: "File in diff but not in contents (skipped)",
+			diff: `diff --git a/missing.go b/missing.go
+index 1234567..abcdefg 100644
+--- a/missing.go
++++ b/missing.go
+@@ -1,3 +1,4 @@
+ package main
+ 
++// TODO: missing file
+ func main() {}`,
+			files:    map[string][]byte{},
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ParseDiffWithContents(tt.diff, tt.files)
+			if !reflect.DeepEqual(result, tt.expected) {
+				t.Errorf("ParseDiffWithContents() = %+v, expected %+v", result, tt.expected)
+			}
+		})
+	}
+}
+
 func TestTodoRegex(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"net/url"
 	"os"
 	"path"
 	"slices"
@@ -263,7 +264,11 @@ func fetchChangedFileContents(repo, pr, diffOutput string) (map[string][]byte, e
 	files := make(map[string][]byte, len(paths))
 	var failedPaths []string
 	for _, p := range paths {
-		apiPath := fmt.Sprintf("repos/%s/contents/%s?ref=%s", nwo, p, sha)
+		segments := strings.Split(p, "/")
+		for i, s := range segments {
+			segments[i] = url.PathEscape(s)
+		}
+		apiPath := fmt.Sprintf("repos/%s/contents/%s?ref=%s", nwo, strings.Join(segments, "/"), sha)
 		out, _, err := gh.Exec("api", apiPath, "-H", "Accept: application/vnd.github.raw+json")
 		if err != nil {
 			failedPaths = append(failedPaths, p)

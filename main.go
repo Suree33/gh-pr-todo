@@ -103,7 +103,10 @@ func main() {
 func collectTODOs(repo, pr string) ([]types.TODO, error) {
 	stdOut, stdErr, err := fetchPRDiff(repo, pr)
 	if err != nil {
-		return nil, fmt.Errorf("%s", strings.TrimSpace(stdErr.String()))
+		if msg := strings.TrimSpace(stdErr.String()); msg != "" {
+			return nil, fmt.Errorf("%s", msg)
+		}
+		return nil, err
 	}
 	if stdErr.Len() > 0 {
 		fmt.Fprintf(os.Stderr, "Warning: %s\n", stdErr.String())

@@ -214,11 +214,22 @@ func runNameOnly(repo string, pr string) {
 type prMeta struct {
 	HeadRefOid     string `json:"headRefOid"`
 	HeadRepository struct {
-		Owner struct {
+		NameWithOwner string `json:"nameWithOwner"`
+		Owner         struct {
 			Login string `json:"login"`
 		} `json:"owner"`
 		Name string `json:"name"`
 	} `json:"headRepository"`
+}
+
+func (m prMeta) headRepositoryNameWithOwner() string {
+	if m.HeadRepository.NameWithOwner != "" {
+		return m.HeadRepository.NameWithOwner
+	}
+	if m.HeadRepository.Owner.Login == "" || m.HeadRepository.Name == "" {
+		return ""
+	}
+	return m.HeadRepository.Owner.Login + "/" + m.HeadRepository.Name
 }
 
 func fetchChangedFileContents(repo, pr, diffOutput string) (map[string][]byte, error) {
@@ -239,9 +250,9 @@ func fetchChangedFileContents(repo, pr, diffOutput string) (map[string][]byte, e
 		return nil, err
 	}
 
-	nwo := meta.HeadRepository.Owner.Login + "/" + meta.HeadRepository.Name
+	nwo := meta.headRepositoryNameWithOwner()
 	sha := meta.HeadRefOid
-	if nwo == "/" || sha == "" {
+	if nwo == "" || sha == "" {
 		return nil, fmt.Errorf("could not determine PR head")
 	}
 

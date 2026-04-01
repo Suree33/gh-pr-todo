@@ -109,7 +109,10 @@ func collectTODOs(repo, pr string) ([]types.TODO, error) {
 	}
 
 	diffOutput := stdOut.String()
-	files, _ := fetchChangedFileContents(repo, pr, diffOutput)
+	files, err := fetchChangedFileContents(repo, pr, diffOutput)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not fetch changed file contents; falling back to diff-only parsing where needed: %v\n", err)
+	}
 	if files == nil {
 		files = make(map[string][]byte)
 	}
@@ -258,13 +261,18 @@ func fetchChangedFileContents(repo, pr, diffOutput string) (map[string][]byte, e
 
 	paths := extractChangedPaths(diffOutput)
 	files := make(map[string][]byte, len(paths))
+	var failedPaths []string
 	for _, p := range paths {
 		apiPath := fmt.Sprintf("repos/%s/contents/%s?ref=%s", nwo, p, sha)
 		out, _, err := gh.Exec("api", apiPath, "-H", "Accept: application/vnd.github.raw+json")
 		if err != nil {
+			failedPaths = append(failedPaths, p)
 			continue
 		}
 		files[p] = out.Bytes()
+	}
+	if len(failedPaths) > 0 {
+		return files, fmt.Errorf("failed to fetch %d changed file(s)", len(failedPaths))
 	}
 
 	return files, nil

@@ -289,8 +289,14 @@ func fetchChangedFileContents(repo, pr, diffOutput string) (map[string][]byte, e
 func extractChangedPaths(diffOutput string) []string {
 	var paths []string
 	seen := make(map[string]struct{})
+	var inHunk bool
 	for _, line := range strings.Split(diffOutput, "\n") {
-		if after, ok := strings.CutPrefix(line, "+++ b/"); ok {
+		if strings.HasPrefix(line, "diff --git ") {
+			inHunk = false
+		} else if strings.HasPrefix(line, "@@") {
+			inHunk = true
+		}
+		if after, ok := strings.CutPrefix(line, "+++ b/"); ok && !inHunk {
 			p := path.Clean(after)
 			if _, exists := seen[p]; !exists {
 				seen[p] = struct{}{}

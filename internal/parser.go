@@ -78,9 +78,12 @@ func extractFileChanges(diffOutput string) []fileChange {
 
 	var current *fileChange
 	var lineNumber int
+	var inHunk bool
 
 	for _, line := range lines {
-		if after, ok := strings.CutPrefix(line, "+++ b/"); ok {
+		if strings.HasPrefix(line, "diff --git ") {
+			inHunk = false
+		} else if after, ok := strings.CutPrefix(line, "+++ b/"); ok && !inHunk {
 			if current != nil {
 				changes = append(changes, *current)
 			}
@@ -89,9 +92,10 @@ func extractFileChanges(diffOutput string) []fileChange {
 			if matches := hunkRegex.FindStringSubmatch(line); len(matches) > 1 {
 				if startLine, err := strconv.Atoi(matches[1]); err == nil {
 					lineNumber = startLine - 1
+					inHunk = true
 				}
 			}
-		} else if strings.HasPrefix(line, "+") {
+		} else if inHunk && strings.HasPrefix(line, "+") {
 			lineNumber++
 			if current != nil {
 				n := len(current.addedRanges)
@@ -101,7 +105,7 @@ func extractFileChanges(diffOutput string) []fileChange {
 					current.addedRanges = append(current.addedRanges, lineRange{start: lineNumber, end: lineNumber})
 				}
 			}
-		} else if strings.HasPrefix(line, " ") {
+		} else if inHunk && strings.HasPrefix(line, " ") {
 			lineNumber++
 		}
 	}

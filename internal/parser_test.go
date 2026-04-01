@@ -512,6 +512,103 @@ index 1234567..abcdefg 100644
 	}
 }
 
+func TestExtractFileChanges_DeletedFileAfterModified(t *testing.T) {
+	tests := []struct {
+		name     string
+		diff     string
+		expected []fileChange
+	}{
+		{
+			name: "Deleted file after modified file does not add spurious ranges",
+			diff: `diff --git a/main.go b/main.go
+index 1234567..abcdefg 100644
+--- a/main.go
++++ b/main.go
+@@ -1,3 +1,4 @@
+ package main
+ 
++// TODO: implement
+ func main() {}
+diff --git a/removed.go b/removed.go
+deleted file mode 100644
+index abcdefg..0000000
+--- a/removed.go
++++ /dev/null
+@@ -1,3 +0,0 @@
+-package main
+-
+-func old() {}`,
+			expected: []fileChange{
+				{
+					path:        "main.go",
+					addedRanges: []lineRange{{start: 3, end: 3}},
+				},
+			},
+		},
+		{
+			name: "Multiple deleted files after modified file",
+			diff: `diff --git a/main.go b/main.go
+index 1234567..abcdefg 100644
+--- a/main.go
++++ b/main.go
+@@ -1,3 +1,4 @@
+ package main
+ 
++var x = 1
+ func main() {}
+diff --git a/a.go b/a.go
+deleted file mode 100644
+index abcdefg..0000000
+--- a/a.go
++++ /dev/null
+@@ -1,2 +0,0 @@
+-package main
+-func a() {}
+diff --git a/b.go b/b.go
+deleted file mode 100644
+index abcdefg..0000000
+--- a/b.go
++++ /dev/null
+@@ -1,2 +0,0 @@
+-package main
+-func b() {}`,
+			expected: []fileChange{
+				{
+					path:        "main.go",
+					addedRanges: []lineRange{{start: 3, end: 3}},
+				},
+			},
+		},
+		{
+			name: "Added line that looks like a +++ header is counted normally",
+			diff: `diff --git a/main.go b/main.go
+index 1234567..abcdefg 100644
+--- a/main.go
++++ b/main.go
+@@ -1,2 +1,4 @@
+ one
++++ not-a-header
++two
+ three`,
+			expected: []fileChange{
+				{
+					path:        "main.go",
+					addedRanges: []lineRange{{start: 2, end: 3}},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractFileChanges(tt.diff)
+			if !reflect.DeepEqual(result, tt.expected) {
+				t.Errorf("extractFileChanges() = %+v, expected %+v", result, tt.expected)
+			}
+		})
+	}
+}
+
 func TestTodoRegex(t *testing.T) {
 	tests := []struct {
 		name     string

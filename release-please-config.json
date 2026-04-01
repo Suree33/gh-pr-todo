@@ -2,7 +2,6 @@
   "release-type": "go",
   "include-component-in-tag": false,
   "bump-minor-pre-major": true,
-  "bump-patch-for-minor-pre-major": true,
   "changelog-sections": [
     {
       "type": "feat",

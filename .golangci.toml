@@ -1,10 +1,13 @@
 version = "2"
 
 [linters]
+# FIXME: keep this aligned with the repository's baseline lint profile.
 default = "standard"
 
 [linters.settings.errcheck]
+# NOTE: these exclusions match the current CLI output handling.
 exclude-functions = ["fmt.Fprint", "fmt.Fprintf", "fmt.Fprintln"]
 
 [formatters]
+# XXX: only gofmt is needed for this repo right now.
 enable = ["gofmt"]

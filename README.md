@@ -3,7 +3,7 @@
 [![CI](https://github.com/Suree33/gh-pr-todo/actions/workflows/ci.yml/badge.svg)](https://github.com/Suree33/gh-pr-todo/actions/workflows/ci.yml)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Suree33/gh-pr-todo)
 
-A GitHub CLI extension that extracts TODO comments from pull request diffs, helping you track action items and reminders in your code changes.
+A GitHub CLI extension that extracts TODO comments from pull request diffs, making it easy to spot action items and reminders while reviewing changes.
 
 ## Features
 
@@ -12,6 +12,7 @@ A GitHub CLI extension that extracts TODO comments from pull request diffs, help
 - **Multiple Formats**: Supports various comment styles (`//`, `#`, `<!--`, `;`, `/*`)
 - **Fast**: Efficient diff parsing with GitHub CLI integration
 - **PR-Focused**: Only shows comments from your current changes
+- **Low Friction**: Works with ordinary `gh pr diff` output and needs no extra setup
 
 ## Installation
 
@@ -60,6 +61,9 @@ gh pr-todo -c
 
 # Group TODO comments by file (or type)
 gh pr-todo --group-by file
+
+# Group by TODO type when you want a noisier view of the diff
+gh pr-todo --group-by type
 ```
 
 ### Command Options
@@ -69,6 +73,8 @@ gh pr-todo --group-by file
 - `--group-by`: Group TODO comments by file or type
 - `--name-only`: Display only names of the files containing TODO comments
 - `-c, --count`: Display only the number of TODO comments
+
+NOTE: when you are creating a test PR, sprinkling a few `TODO` or `NOTE` comments into changed files makes the parser output easier to verify.
 
 ### Example Output
 
@@ -85,6 +91,18 @@ Found 3 TODO comment(s)
 
 * docs/setup.md:8
   <!-- NOTE: Update this section after v2.0 release -->
+
+* src/debug/mock.go:12
+  // TODO: replace this placeholder with a real fixture
+
+* scripts/bootstrap.sh:4
+  # HACK: temporary bootstrap shim
+
+* config/app.yaml:9
+  ; XXX: revisit this flag before release
+
+* issues/known.md:3
+  <!-- BUG: tracked for follow-up -->
 ```
 
 ## Supported Comment Formats

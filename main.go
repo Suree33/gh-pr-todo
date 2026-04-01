@@ -26,6 +26,8 @@ var (
 	magenta = color.New(color.FgMagenta).SprintFunc()
 )
 
+const fetchingMsg = " Fetching PR diff..."
+
 func main() {
 	var (
 		repo     string
@@ -99,7 +101,6 @@ func main() {
 
 func runMain(repo string, pr string, groupBy types.GroupBy) {
 	sp := spinner.New(spinner.CharSets[14], 40*time.Millisecond)
-	fetchingMsg := " Fetching PR diff..."
 	sp.Suffix = fetchingMsg
 	sp.Start()
 
@@ -115,7 +116,7 @@ func runMain(repo string, pr string, groupBy types.GroupBy) {
 	}
 
 	if stdErr.Len() > 0 {
-		fmt.Fprintf(os.Stderr, "Warning: %s\n", stdErr.String())
+		printWarning(&stdErr)
 	}
 
 	todos := internal.ParseDiff(stdOut.String())
@@ -168,7 +169,6 @@ func runMain(repo string, pr string, groupBy types.GroupBy) {
 
 func runCount(repo string, pr string) {
 	sp := spinner.New(spinner.CharSets[14], 40*time.Millisecond)
-	fetchingMsg := " Fetching PR diff..."
 	sp.Suffix = fetchingMsg
 	sp.Start()
 
@@ -181,7 +181,7 @@ func runCount(repo string, pr string) {
 	}
 
 	if stdErr.Len() > 0 {
-		fmt.Fprintf(os.Stderr, "Warning: %s\n", stdErr.String())
+		printWarning(&stdErr)
 	}
 
 	todos := internal.ParseDiff(stdOut.String())
@@ -191,7 +191,6 @@ func runCount(repo string, pr string) {
 
 func runNameOnly(repo string, pr string) {
 	sp := spinner.New(spinner.CharSets[14], 40*time.Millisecond)
-	fetchingMsg := " Fetching PR diff..."
 	sp.Suffix = fetchingMsg
 	sp.Start()
 
@@ -204,7 +203,7 @@ func runNameOnly(repo string, pr string) {
 	}
 
 	if stdErr.Len() > 0 {
-		fmt.Fprintf(os.Stderr, "Warning: %s\n", stdErr.String())
+		printWarning(&stdErr)
 	}
 
 	todos := internal.ParseDiff(stdOut.String())
@@ -241,4 +240,9 @@ func printExecError(stdErr *bytes.Buffer, err error) {
 	} else if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 	}
+}
+
+// HACK: fold the spinner and warning handling into a shared helper if another mode is added.
+func printWarning(stdErr *bytes.Buffer) {
+	fmt.Fprintf(os.Stderr, "Warning: %s\n", stdErr.String())
 }

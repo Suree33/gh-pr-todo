@@ -21,18 +21,156 @@ index 1234567..abcdefg 100644
 --- a/test.go
 +++ b/test.go
 @@ -1,3 +1,4 @@
- package main
+package main
  
 +// TODO: implement this function
- func main() {`,
+func main() {`,
 			expected: []types.TODO{
 				{
 					Filename: "test.go",
-					Line:     3,
+					Line:     2,
 					Comment:  "// TODO: implement this function",
 					Type:     "TODO",
 				},
 			},
+		},
+		{
+			name: "Trailing whitespace in TODO comment",
+			input: `diff --git a/trim.go b/trim.go
+index 1234567..abcdefg 100644
+--- a/trim.go
++++ b/trim.go
+@@ -1,3 +1,4 @@
+package main
+
++// TODO: trim this comment   
+func main() {}`,
+			expected: []types.TODO{
+				{
+					Filename: "trim.go",
+					Line:     1,
+					Comment:  "// TODO: trim this comment",
+					Type:     "TODO",
+				},
+			},
+		},
+		{
+			name: "NOTE comment is detected",
+			input: `diff --git a/note.go b/note.go
+index 1234567..abcdefg 100644
+--- a/note.go
++++ b/note.go
+@@ -1,3 +1,4 @@
+package main
+
++# NOTE: keep this stub around for now
+func main() {}`,
+			expected: []types.TODO{
+				{
+					Filename: "note.go",
+					Line:     1,
+					Comment:  "# NOTE: keep this stub around for now",
+					Type:     "NOTE",
+				},
+			},
+		},
+		{
+			name: "FIXME comment is detected",
+			input: `diff --git a/fixme.go b/fixme.go
+index 1234567..abcdefg 100644
+--- a/fixme.go
++++ b/fixme.go
+@@ -1,3 +1,4 @@
+package main
+
++// FIXME: revisit this shortcut
+func main() {}`,
+			expected: []types.TODO{
+				{
+					Filename: "fixme.go",
+					Line:     1,
+					Comment:  "// FIXME: revisit this shortcut",
+					Type:     "FIXME",
+				},
+			},
+		},
+		{
+			name: "HACK comment is detected",
+			input: `diff --git a/hack.go b/hack.go
+index 1234567..abcdefg 100644
+--- a/hack.go
++++ b/hack.go
+@@ -1,3 +1,4 @@
+package main
+
++/* HACK: temporary bridge until the real API exists */
+func main() {}`,
+			expected: []types.TODO{
+				{
+					Filename: "hack.go",
+					Line:     1,
+					Comment:  "/* HACK: temporary bridge until the real API exists */",
+					Type:     "HACK",
+				},
+			},
+		},
+		{
+			name: "XXX comment is detected",
+			input: `diff --git a/xxx.go b/xxx.go
+index 1234567..abcdefg 100644
+--- a/xxx.go
++++ b/xxx.go
+@@ -1,3 +1,4 @@
+package main
+
++; XXX: remove this experimental flag later
+func main() {}`,
+			expected: []types.TODO{
+				{
+					Filename: "xxx.go",
+					Line:     1,
+					Comment:  "; XXX: remove this experimental flag later",
+					Type:     "XXX",
+				},
+			},
+		},
+		{
+			name: "BUG comment is detected",
+			input: `diff --git a/bug.go b/bug.go
+index 1234567..abcdefg 100644
+--- a/bug.go
++++ b/bug.go
+@@ -1,3 +1,4 @@
+package main
+
++<!-- BUG: document the broken edge case here -->
+func main() {}`,
+			expected: []types.TODO{
+				{
+					Filename: "bug.go",
+					Line:     1,
+					Comment:  "<!-- BUG: document the broken edge case here -->",
+					Type:     "BUG",
+				},
+			},
+		},
+		{
+			name: "String literals with TODO-style text are ignored",
+			input: `diff --git a/strings.go b/strings.go
+index 1234567..abcdefg 100644
+--- a/strings.go
++++ b/strings.go
+@@ -1,4 +1,10 @@
+package main
+
++const todoText = "/" + "/ TODO: not a comment"
++const fixmeText = "/" + "/ FIXME: also not a comment"
++const hackText = "/" + "/ HACK: still not a comment"
++const noteText = "/" + "/ NOTE: just a string"
++const xxxText = "/" + "/ XXX: not parsed here"
++const bugText = "/" + "/ BUG: not parsed either"
+func main() {}`,
+			expected: nil,
 		},
 		{
 			name: "Multiple comment formats (//、#、<!--、;、/*)",
@@ -204,6 +342,24 @@ index 1234567..abcdefg 100644
 					Type:     "FIXME",
 				},
 			},
+		},
+		{
+			name: "String literals with TODO-style text are ignored",
+			input: `diff --git a/strings.go b/strings.go
+index 1234567..abcdefg 100644
+--- a/strings.go
++++ b/strings.go
+@@ -1,4 +1,10 @@
+package main
+
++const todoText = "TODO: not a comment"
++const fixmeText = "FIXME: also not a comment"
++const hackText = "HACK: still not a comment"
++const noteText = "NOTE: just a string"
++const xxxText = "XXX: not parsed here"
++const bugText = "BUG: not parsed either"
+func main() {}`,
+			expected: nil,
 		},
 		{
 			name: "Multiple hunks (line number calculation test)",

@@ -13,12 +13,13 @@ var (
 	hunkRegex = regexp.MustCompile(`^@@\s+\-\d+(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@`)
 )
 
-// Extracts TODO comments from git diff output
+// Extracts TODO comments from git diff output.
 func ParseDiff(diffOutput string) []types.TODO {
 	var todos []types.TODO
 	lines := strings.Split(diffOutput, "\n")
 
 	var currentFile string
+	// FIXME: support combined diffs if gh ever starts emitting them here.
 	var lineNumber int
 
 	for _, line := range lines {

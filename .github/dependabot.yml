@@ -3,6 +3,7 @@ version: 2
 updates:
   - package-ecosystem: gomod
     directory: /
+    # NOTE: keep dependency updates noisy enough to exercise PR parsing.
     open-pull-requests-limit: 5
     cooldown:
       default-days: 7
@@ -11,6 +12,7 @@ updates:
       interval: daily
   - package-ecosystem: github-actions
     directory: /
+    # HACK: mirror the Go module cadence so the config stays easy to compare.
     cooldown:
       default-days: 7
     schedule:

@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.0](https://github.com/Suree33/gh-pr-todo/compare/v0.4.1...v0.5.0) (2026-04-01)
+
+
+### Features
+
+* **parser:** add Tree-sitter integration for syntax-aware TODO detection ([#40](https://github.com/Suree33/gh-pr-todo/issues/40)) ([0097b7c](https://github.com/Suree33/gh-pr-todo/commit/0097b7cf996f032af9fb7db90233111a63e064d6))
+
+
+### Documentation
+
+* add AGENTS.md ([#38](https://github.com/Suree33/gh-pr-todo/issues/38)) ([049f880](https://github.com/Suree33/gh-pr-todo/commit/049f880824ce9eebabb4dfd36d90beabbaa60f0a))
+
+
+### Miscellaneous Chores
+
+* remove bump-patch-for-minor-pre-major from release-please config ([#42](https://github.com/Suree33/gh-pr-todo/issues/42)) ([c7d0f14](https://github.com/Suree33/gh-pr-todo/commit/c7d0f14f19d17abf5d09d56a9aa6006fd1bcbf9f))
+
 ## [0.4.1](https://github.com/Suree33/gh-pr-todo/compare/v0.4.0...v0.4.1) (2026-03-30)
 
 

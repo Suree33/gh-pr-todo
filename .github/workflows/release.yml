@@ -4,30 +4,26 @@ on:
   push:
     branches: [main]
 
-permissions:
-  contents: write
-
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      - uses: actions/create-github-app-token@v3
-        id: app-token
-        with:
-          app-id: ${{ vars.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_PRIVATE_KEY }}
       - uses: googleapis/release-please-action@v4
         id: release
-        with:
-          token: ${{ steps.app-token.outputs.token }}
 
   publish-assets:
     needs: release
     if: ${{ needs.release.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v6
 

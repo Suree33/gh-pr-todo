@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.1](https://github.com/Suree33/gh-pr-todo/compare/v0.5.0...v0.5.1) (2026-04-03)
+
+
+### Documentation
+
+* **README:** add downloads badge ([#43](https://github.com/Suree33/gh-pr-todo/issues/43)) ([62f070b](https://github.com/Suree33/gh-pr-todo/commit/62f070bdd3e55966e91370198a96a58f2ec6e050))
+
+
+### Miscellaneous Chores
+
+* **release:** revert PR [#37](https://github.com/Suree33/gh-pr-todo/issues/37) ([#45](https://github.com/Suree33/gh-pr-todo/issues/45)) ([4d6b6b4](https://github.com/Suree33/gh-pr-todo/commit/4d6b6b4595a2b7ab222fa00cef4bc76a004f5df9))
+
 ## [0.5.0](https://github.com/Suree33/gh-pr-todo/compare/v0.4.1...v0.5.0) (2026-04-01)
 
 

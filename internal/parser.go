@@ -71,6 +71,29 @@ func ParseDiff(diffOutput string) []types.TODO {
 	return todos
 }
 
+// ExtractChangedPaths returns the set of file paths touched by added hunks in the
+// unified diff output. Order is preserved and duplicates are removed.
+func ExtractChangedPaths(diffOutput string) []string {
+	var paths []string
+	seen := make(map[string]struct{})
+	var inHunk bool
+	for _, line := range strings.Split(diffOutput, "\n") {
+		if strings.HasPrefix(line, "diff --git ") {
+			inHunk = false
+		} else if strings.HasPrefix(line, "@@") {
+			inHunk = true
+		}
+		if after, ok := strings.CutPrefix(line, "+++ b/"); ok && !inHunk {
+			p := path.Clean(after)
+			if _, exists := seen[p]; !exists {
+				seen[p] = struct{}{}
+				paths = append(paths, p)
+			}
+		}
+	}
+	return paths
+}
+
 // extractFileChanges parses unified diff output and returns per-file added line ranges.
 func extractFileChanges(diffOutput string) []fileChange {
 	var changes []fileChange

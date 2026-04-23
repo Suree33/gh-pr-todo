@@ -71,8 +71,6 @@ func ParseDiff(diffOutput string) []types.TODO {
 	return todos
 }
 
-// ExtractChangedPaths returns the set of file paths touched by added hunks in the
-// unified diff output. Order is preserved and duplicates are removed.
 func ExtractChangedPaths(diffOutput string) []string {
 	var paths []string
 	seen := make(map[string]struct{})

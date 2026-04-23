@@ -13,16 +13,13 @@ import (
 	"github.com/cli/go-gh/v2"
 )
 
-// PRFetcher abstracts access to PR data so collectors can be tested with mocks.
 type PRFetcher interface {
 	FetchDiff(repo, pr string) (string, error)
 	FetchChangedFileContents(repo, pr, diffOutput string) (map[string][]byte, error)
 }
 
-// Client is the default PRFetcher implementation backed by the `gh` CLI.
 type Client struct{}
 
-// NewClient returns a new Client that invokes the `gh` CLI.
 func NewClient() *Client {
 	return &Client{}
 }
@@ -48,9 +45,6 @@ func (m prMeta) headRepositoryNameWithOwner() string {
 	return m.HeadRepository.Owner.Login + "/" + m.HeadRepository.Name
 }
 
-// FetchDiff runs `gh pr diff` and returns stdout as a string. When the command
-// fails, any captured stderr content is embedded in the returned error; when it
-// succeeds but stderr is non-empty, the content is emitted as a warning.
 func (c *Client) FetchDiff(repo, pr string) (string, error) {
 	args := []string{"pr", "diff"}
 	if repo != "" {
@@ -72,8 +66,6 @@ func (c *Client) FetchDiff(repo, pr string) (string, error) {
 	return stdOut.String(), nil
 }
 
-// FetchChangedFileContents downloads the post-change content of every file
-// touched by the diff via the GitHub contents API.
 func (c *Client) FetchChangedFileContents(repo, pr, diffOutput string) (map[string][]byte, error) {
 	args := []string{"pr", "view", "--json", "headRefOid,headRepository"}
 	if repo != "" {
@@ -121,8 +113,6 @@ func (c *Client) FetchChangedFileContents(repo, pr, diffOutput string) (map[stri
 	return files, nil
 }
 
-// CollectTODOs fetches a PR's diff through the given fetcher and parses TODOs
-// using the full post-change file contents when available.
 func CollectTODOs(fetcher PRFetcher, repo, pr string) ([]types.TODO, error) {
 	diffOutput, err := fetcher.FetchDiff(repo, pr)
 	if err != nil {

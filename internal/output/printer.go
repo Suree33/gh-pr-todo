@@ -12,8 +12,6 @@ import (
 	"github.com/fatih/color"
 )
 
-// Exported SprintFuncs so other packages (e.g. main) can share the same palette
-// for status markers without redefining them.
 var (
 	Bold    = color.New(color.Bold).SprintFunc()
 	Green   = color.New(color.FgGreen).SprintFunc()
@@ -22,7 +20,6 @@ var (
 	Magenta = color.New(color.FgMagenta).SprintFunc()
 )
 
-// PrintTODOs renders the given TODOs using the requested grouping.
 func PrintTODOs(todos []types.TODO, groupBy types.GroupBy) {
 	switch groupBy {
 	case types.GroupByNone:
@@ -34,7 +31,6 @@ func PrintTODOs(todos []types.TODO, groupBy types.GroupBy) {
 	}
 }
 
-// PrintFileNames writes one unique filename per line for every TODO.
 func PrintFileNames(todos []types.TODO) {
 	if len(todos) == 0 {
 		return
@@ -48,7 +44,6 @@ func PrintFileNames(todos []types.TODO) {
 	}
 }
 
-// PrintCount writes the number of TODOs to stdout.
 func PrintCount(todos []types.TODO) {
 	fmt.Fprintln(color.Output, len(todos))
 }

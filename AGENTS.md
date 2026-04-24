@@ -4,8 +4,10 @@
 
 This is a GitHub CLI extension (`gh pr-todo`) that extracts TODO/FIXME/HACK/NOTE/XXX/BUG comments from PR diffs.
 
-- `main.go` — CLI entrypoint; uses `pflag` for flags, `go-gh/v2` to call `gh pr diff`, `spinner`/`color` for terminal UI.
-- `internal/parser.go` — `ParseDiff()` parses unified diff output and extracts TODO comments via regex.
+- `main.go` — CLI entrypoint; uses `pflag` for flags, `spinner`/`color` for terminal UI.
+- `internal/github/client.go` — GitHub API client; fetches PR diffs and file contents via `go-gh/v2`.
+- `internal/output/printer.go` — Terminal output rendering (colored, grouped display).
+- `internal/parser.go` — `ParseDiff()` parses unified diff output and extracts TODO comments. Uses Tree-sitter for syntax-aware detection in supported languages, with regex fallback for others.
 - `pkg/types/` — shared types: `TODO` struct and `GroupBy` enum (implements `pflag.Value`).
 
 ## Build / Lint / Test
@@ -14,7 +16,7 @@ This is a GitHub CLI extension (`gh pr-todo`) that extracts TODO/FIXME/HACK/NOTE
 - Run `main.go`: `go run .` (or `go run . --help` to show usage)
 - Lint: `golangci-lint run` (config: `.golangci.toml`, golangci-lint v2, formatters: gofmt)
 - Test all: `go test -v ./...`
-- Test single: `go test -v -run TestName ./internal/` (only `internal/` has tests)
+- Test single: `go test -v -run TestName ./internal/...` (`internal/` and `internal/github/` have tests)
 
 ## Code Style
 

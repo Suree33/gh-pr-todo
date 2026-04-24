@@ -8,7 +8,7 @@ A GitHub CLI extension that extracts TODO comments from pull request diffs, help
 
 ## Features
 
-- **Smart Detection**: Finds TODO, FIXME, HACK, NOTE, XXX, and BUG comments
+- **Smart Detection**: Uses Tree-sitter for syntax-aware TODO detection in supported languages, with regex fallback for others. Finds TODO, FIXME, HACK, NOTE, XXX, and BUG comments
 - **Beautiful Output**: Colorized terminal output with loading indicators
 - **Multiple Formats**: Supports various comment styles (`//`, `#`, `<!--`, `;`, `/*`)
 - **Fast**: Efficient diff parsing with GitHub CLI integration
@@ -116,18 +116,25 @@ The tool recognizes TODO-style comments in various formats:
 ```bash
 git clone https://github.com/Suree33/gh-pr-todo.git
 cd gh-pr-todo
-go build -o gh-pr-todo main.go
+go build -o gh-pr-todo .
 ```
 
 ### Project Structure
 
 ```
-├── main.go              # CLI entry point
+├── main.go                    # CLI entry point
 ├── internal/
-│   └── parser.go        # Diff parsing logic
+│   ├── github/
+│   │   ├── client.go          # GitHub API client (diff fetch, file contents)
+│   │   └── client_test.go     # Client tests
+│   ├── output/
+│   │   └── printer.go         # Terminal output rendering
+│   ├── parser.go              # Diff parsing (Tree-sitter + regex fallback)
+│   └── parser_test.go         # Parser tests
 ├── pkg/
 │   └── types/
-│       └── todo.go      # TODO type definitions
+│       ├── todo.go            # TODO type definitions
+│       └── groupby.go         # GroupBy enum
 ```
 
 ## Contributing

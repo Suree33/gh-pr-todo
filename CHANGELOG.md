@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.2](https://github.com/Suree33/gh-pr-todo/compare/v0.5.1...v0.5.2) (2026-04-28)
+
+
+### Miscellaneous Chores
+
+* **deps:** bump github.com/odvcencio/gotreesitter from 0.12.2 to 0.15.2 ([#58](https://github.com/Suree33/gh-pr-todo/issues/58)) ([7b82bd7](https://github.com/Suree33/gh-pr-todo/commit/7b82bd71335fd8f5965a74e0d2dfd01c52050cd7))
+* update release-please config to refine sections ([#56](https://github.com/Suree33/gh-pr-todo/issues/56)) ([4a86e68](https://github.com/Suree33/gh-pr-todo/commit/4a86e6854238c37b6298d5b7260fd898b1acf59e))
+
 ## [0.5.1](https://github.com/Suree33/gh-pr-todo/compare/v0.5.0...v0.5.1) (2026-04-23)
 
 

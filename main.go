@@ -53,19 +53,33 @@ func main() {
 	}
 
 	fetcher := ghclient.NewClient()
-	var err error
+	var (
+		err   error
+		count int
+	)
 	switch {
 	case nameOnly:
-		err = runNameOnly(fetcher, repo, pr)
+		count, err = runNameOnly(fetcher, repo, pr)
 	case isCount:
-		err = runCount(fetcher, repo, pr)
+		count, err = runCount(fetcher, repo, pr)
 	default:
-		err = runMain(fetcher, repo, pr, groupBy)
+		count, err = runMain(fetcher, repo, pr, groupBy)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	if count > 0 && isCI() {
+		os.Exit(1)
+	}
+}
+
+func isCI() bool {
+	switch os.Getenv("CI") {
+	case "1", "true":
+		return true
+	}
+	return false
 }
 
 func printUsage() {
@@ -93,7 +107,7 @@ func printUsage() {
 	fmt.Fprintln(color.Output)
 }
 
-func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy) error {
+func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy) (int, error) {
 	sp := spinner.New(spinner.CharSets[14], 40*time.Millisecond)
 	fetchingMsg := " Fetching PR diff..."
 	sp.Suffix = fetchingMsg
@@ -104,34 +118,34 @@ func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy)
 
 	if err != nil {
 		fmt.Fprintf(color.Output, "%s%s\n", output.Red("✗"), fetchingMsg)
-		return err
+		return 0, err
 	}
 	fmt.Fprintf(color.Output, "%s%s\n", output.Green("✔"), fetchingMsg)
 
 	if len(todos) == 0 {
 		fmt.Fprintf(color.Output, "\nNo TODO comments found in the diff.\n")
-		return nil
+		return 0, nil
 	}
 
 	fmt.Fprintf(color.Output, output.Bold("\nFound %d TODO comment(s)\n\n"), len(todos))
 	output.PrintTODOs(todos, groupBy)
-	return nil
+	return len(todos), nil
 }
 
-func runCount(fetcher ghclient.PRFetcher, repo, pr string) error {
+func runCount(fetcher ghclient.PRFetcher, repo, pr string) (int, error) {
 	todos, err := ghclient.CollectTODOs(fetcher, repo, pr)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	output.PrintCount(todos)
-	return nil
+	return len(todos), nil
 }
 
-func runNameOnly(fetcher ghclient.PRFetcher, repo, pr string) error {
+func runNameOnly(fetcher ghclient.PRFetcher, repo, pr string) (int, error) {
 	todos, err := ghclient.CollectTODOs(fetcher, repo, pr)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	output.PrintFileNames(todos)
-	return nil
+	return len(todos), nil
 }

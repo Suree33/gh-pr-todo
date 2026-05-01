@@ -193,7 +193,7 @@ func TestRunMain(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var gotErr error
 			out, stdout, gotStderr := captureAll(t, func() {
-				gotErr = runMain(tt.fetcher, "o/r", "1", tt.groupBy)
+				_, gotErr = runMain(tt.fetcher, "o/r", "1", tt.groupBy)
 			})
 
 			if tt.wantErr != "" {
@@ -239,7 +239,7 @@ func TestRunCount(t *testing.T) {
 		fetcher := &stubFetcher{diffErr: errors.New("boom")}
 		var err error
 		out, stdout, stderr := captureAll(t, func() {
-			err = runCount(fetcher, "", "")
+			_, err = runCount(fetcher, "", "")
 		})
 		if err == nil || err.Error() != "boom" {
 			t.Fatalf("runCount() error = %v, expected boom", err)
@@ -257,7 +257,7 @@ func TestRunCount(t *testing.T) {
 		}
 		var err error
 		out, stdout, stderr := captureAll(t, func() {
-			err = runCount(fetcher, "o/r", "1")
+			_, err = runCount(fetcher, "o/r", "1")
 		})
 		if err != nil {
 			t.Fatalf("runCount() unexpected error = %v", err)
@@ -277,7 +277,7 @@ func TestRunNameOnly(t *testing.T) {
 		fetcher := &stubFetcher{diffErr: errors.New("boom")}
 		var err error
 		out, stdout, stderr := captureAll(t, func() {
-			err = runNameOnly(fetcher, "", "")
+			_, err = runNameOnly(fetcher, "", "")
 		})
 		if err == nil || err.Error() != "boom" {
 			t.Fatalf("runNameOnly() error = %v, expected boom", err)
@@ -295,7 +295,7 @@ func TestRunNameOnly(t *testing.T) {
 		}
 		var err error
 		out, stdout, stderr := captureAll(t, func() {
-			err = runNameOnly(fetcher, "o/r", "1")
+			_, err = runNameOnly(fetcher, "o/r", "1")
 		})
 		if err != nil {
 			t.Fatalf("runNameOnly() unexpected error = %v", err)
@@ -313,7 +313,7 @@ func TestRunNameOnly(t *testing.T) {
 		fetcher := &stubFetcher{diff: "", files: map[string][]byte{}}
 		var err error
 		out, stdout, stderr := captureAll(t, func() {
-			err = runNameOnly(fetcher, "", "")
+			_, err = runNameOnly(fetcher, "", "")
 		})
 		if err != nil {
 			t.Fatalf("runNameOnly() unexpected error = %v", err)
@@ -321,6 +321,171 @@ func TestRunNameOnly(t *testing.T) {
 		assertSilentChannels(t, "runNameOnly()", stdout, stderr)
 		if out != "" {
 			t.Fatalf("runNameOnly() output = %q, expected empty", out)
+		}
+	})
+}
+
+func TestIsCI(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		set   bool
+		want  bool
+	}{
+		{name: "unset returns false", set: false, want: false},
+		{name: "empty returns false", value: "", set: true, want: false},
+		{name: "CI=1 returns true", value: "1", set: true, want: true},
+		{name: "CI=true returns true", value: "true", set: true, want: true},
+		{name: "CI=false returns false", value: "false", set: true, want: false},
+		{name: "CI=0 returns false", value: "0", set: true, want: false},
+		{name: "CI=TRUE (uppercase) returns false", value: "TRUE", set: true, want: false},
+		{name: "CI=yes returns false", value: "yes", set: true, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("CI", "")
+			if tt.set {
+				t.Setenv("CI", tt.value)
+			} else {
+				if err := os.Unsetenv("CI"); err != nil {
+					t.Fatalf("os.Unsetenv() error = %v", err)
+				}
+			}
+			if got := isCI(); got != tt.want {
+				t.Fatalf("isCI() = %v, expected %v (CI set=%v value=%q)", got, tt.want, tt.set, tt.value)
+			}
+		})
+	}
+}
+
+func TestRunFunctionsReturnTODOCount(t *testing.T) {
+	twoTODOsDiff := `diff --git a/foo.go b/foo.go
+index 0000000..1111111 100644
+--- a/foo.go
++++ b/foo.go
+@@ -1,1 +1,3 @@
+ package foo
++// TODO: add bar
++// FIXME: fix baz
+`
+	twoTODOsFiles := map[string][]byte{
+		"foo.go": []byte("package foo\n// TODO: add bar\n// FIXME: fix baz\n"),
+	}
+
+	tests := []struct {
+		name      string
+		fetcher   *stubFetcher
+		wantCount int
+	}{
+		{
+			name:      "no TODOs returns 0",
+			fetcher:   &stubFetcher{diff: "", files: map[string][]byte{}},
+			wantCount: 0,
+		},
+		{
+			name: "one TODO returns 1",
+			fetcher: &stubFetcher{
+				diff:  sampleDiff,
+				files: map[string][]byte{"foo.go": []byte("package foo\n// TODO: add bar\n")},
+			},
+			wantCount: 1,
+		},
+		{
+			name:      "two TODOs returns 2",
+			fetcher:   &stubFetcher{diff: twoTODOsDiff, files: twoTODOsFiles},
+			wantCount: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run("runMain/"+tt.name, func(t *testing.T) {
+			var gotCount int
+			var gotErr error
+			_, _, _ = captureAll(t, func() {
+				gotCount, gotErr = runMain(tt.fetcher, "o/r", "1", types.GroupByNone)
+			})
+			if gotErr != nil {
+				t.Fatalf("runMain() unexpected error = %v", gotErr)
+			}
+			if gotCount != tt.wantCount {
+				t.Fatalf("runMain() count = %d, expected %d", gotCount, tt.wantCount)
+			}
+		})
+
+		t.Run("runCount/"+tt.name, func(t *testing.T) {
+			var gotCount int
+			var gotErr error
+			_, _, _ = captureAll(t, func() {
+				gotCount, gotErr = runCount(tt.fetcher, "o/r", "1")
+			})
+			if gotErr != nil {
+				t.Fatalf("runCount() unexpected error = %v", gotErr)
+			}
+			if gotCount != tt.wantCount {
+				t.Fatalf("runCount() count = %d, expected %d", gotCount, tt.wantCount)
+			}
+		})
+
+		t.Run("runNameOnly/"+tt.name, func(t *testing.T) {
+			var gotCount int
+			var gotErr error
+			_, _, _ = captureAll(t, func() {
+				gotCount, gotErr = runNameOnly(tt.fetcher, "o/r", "1")
+			})
+			if gotErr != nil {
+				t.Fatalf("runNameOnly() unexpected error = %v", gotErr)
+			}
+			if gotCount != tt.wantCount {
+				t.Fatalf("runNameOnly() count = %d, expected %d", gotCount, tt.wantCount)
+			}
+		})
+	}
+}
+
+func TestRunFunctionsReturnZeroCountOnError(t *testing.T) {
+	t.Run("runMain", func(t *testing.T) {
+		fetcher := &stubFetcher{diffErr: errors.New("boom")}
+		var gotCount int
+		var gotErr error
+		_, _, _ = captureAll(t, func() {
+			gotCount, gotErr = runMain(fetcher, "", "", types.GroupByNone)
+		})
+		if gotErr == nil {
+			t.Fatalf("runMain() expected error, got nil")
+		}
+		if gotCount != 0 {
+			t.Fatalf("runMain() count = %d, expected 0", gotCount)
+		}
+	})
+
+	t.Run("runCount", func(t *testing.T) {
+		fetcher := &stubFetcher{diffErr: errors.New("boom")}
+		var gotCount int
+		var gotErr error
+		_, _, _ = captureAll(t, func() {
+			gotCount, gotErr = runCount(fetcher, "", "")
+		})
+		if gotErr == nil {
+			t.Fatalf("runCount() expected error, got nil")
+		}
+		if gotCount != 0 {
+			t.Fatalf("runCount() count = %d, expected 0", gotCount)
+		}
+	})
+
+	t.Run("runNameOnly", func(t *testing.T) {
+		fetcher := &stubFetcher{diffErr: errors.New("boom")}
+		var gotCount int
+		var gotErr error
+		_, _, _ = captureAll(t, func() {
+			gotCount, gotErr = runNameOnly(fetcher, "", "")
+		})
+		if gotErr == nil {
+			t.Fatalf("runNameOnly() expected error, got nil")
+		}
+		if gotCount != 0 {
+			t.Fatalf("runNameOnly() count = %d, expected 0", gotCount)
 		}
 	})
 }

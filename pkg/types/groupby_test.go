@@ -1,10 +1,14 @@
 package types
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestGroupBy_Set(t *testing.T) {
 	tests := []struct {
 		name    string
+		initial GroupBy
 		input   string
 		want    GroupBy
 		wantErr bool
@@ -15,16 +19,29 @@ func TestGroupBy_Set(t *testing.T) {
 		{name: "type mixed case", input: "Type", want: GroupByType},
 		{name: "invalid", input: "bogus", wantErr: true},
 		{name: "empty", input: "", wantErr: true},
+		{name: "invalid does not mutate existing value", initial: GroupByFile, input: "bogus", want: GroupByFile, wantErr: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var g GroupBy
+			g := tt.initial
 			err := g.Set(tt.input)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("Set(%q) error = %v, wantErr = %v", tt.input, err, tt.wantErr)
 			}
-			if !tt.wantErr && g != tt.want {
+			if tt.wantErr {
+				msg := err.Error()
+				for _, want := range []string{tt.input, "--group-by", `"file"`, `"type"`} {
+					if !strings.Contains(msg, want) {
+						t.Errorf("Set(%q) error %q does not contain %q", tt.input, msg, want)
+					}
+				}
+				if g != tt.want {
+					t.Errorf("Set(%q) mutated value to %q, want %q", tt.input, g, tt.want)
+				}
+				return
+			}
+			if g != tt.want {
 				t.Errorf("Set(%q) = %q, want %q", tt.input, g, tt.want)
 			}
 		})

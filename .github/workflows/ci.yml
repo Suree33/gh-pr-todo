@@ -19,13 +19,16 @@ defaults:
 
 jobs:
   lint:
+    name: Lint
     timeout-minutes: 15
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - &checkout
+        uses: actions/checkout@v6
 
-      - name: Setup Go
+      - &setup-go
+        name: Setup Go
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
@@ -34,6 +37,7 @@ jobs:
         uses: golangci/golangci-lint-action@v9
 
   build:
+    name: Build
     needs: lint
     timeout-minutes: 15
     strategy:
@@ -43,17 +47,14 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
+      - *checkout
+      - *setup-go
 
       - name: Build
         run: go build -v ./...
 
   test:
+    name: Test
     needs: lint
     timeout-minutes: 15
     strategy:
@@ -63,12 +64,19 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
+      - *checkout
+      - *setup-go
 
       - name: Test
         run: go test -v ./...
+
+  actionlint:
+    name: Actionlint
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+
+    steps:
+      - *checkout
+
+      - name: Actionlint
+        run: docker run --rm -v "$(pwd):$(pwd)" -w "$(pwd)" rhysd/actionlint:latest -color

@@ -335,15 +335,16 @@ func TestFetchChangedFileContents(t *testing.T) {
 }
 
 type stubFetcher struct {
-	diff      string
-	diffErr   error
-	files     map[string][]byte
-	filesErr  error
-	gotRepoFD string
-	gotPRFD   string
-	gotRepoFC string
-	gotPRFC   string
-	gotDiffFC string
+	diff          string
+	diffErr       error
+	files         map[string][]byte
+	filesErr      error
+	gotRepoFD     string
+	gotPRFD       string
+	gotRepoFC     string
+	gotPRFC       string
+	gotDiffFC     string
+	fetchFCCalled bool
 }
 
 func (s *stubFetcher) FetchDiff(repo, pr string) (string, error) {
@@ -352,6 +353,7 @@ func (s *stubFetcher) FetchDiff(repo, pr string) (string, error) {
 }
 
 func (s *stubFetcher) FetchChangedFileContents(repo, pr, diff string) (map[string][]byte, error) {
+	s.fetchFCCalled = true
 	s.gotRepoFC, s.gotPRFC, s.gotDiffFC = repo, pr, diff
 	return s.files, s.filesErr
 }
@@ -359,12 +361,24 @@ func (s *stubFetcher) FetchChangedFileContents(repo, pr, diff string) (map[strin
 func TestCollectTODOs(t *testing.T) {
 	t.Run("FetchDiff error returned", func(t *testing.T) {
 		s := &stubFetcher{diffErr: errors.New("diff failed")}
-		todos, err := CollectTODOs(s, "o/r", "1")
+		var (
+			todos []types.TODO
+			err   error
+		)
+		stderrOut := captureStderr(t, func() {
+			todos, err = CollectTODOs(s, "o/r", "1")
+		})
 		if err == nil || err.Error() != "diff failed" {
 			t.Fatalf("expected diff failed error, got %v", err)
 		}
 		if todos != nil {
 			t.Fatalf("expected nil todos, got %v", todos)
+		}
+		if stderrOut != "" {
+			t.Fatalf("stderr = %q, expected empty", stderrOut)
+		}
+		if s.fetchFCCalled {
+			t.Fatal("FetchChangedFileContents should not be called when FetchDiff fails")
 		}
 	})
 

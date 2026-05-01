@@ -247,6 +247,9 @@ func TestRunCount(t *testing.T) {
 		if strings.TrimSpace(out) != "1" {
 			t.Fatalf("runCount() output = %q, expected %q", out, "1")
 		}
+		if fetcher.gotRepo != "o/r" || fetcher.gotPR != "1" {
+			t.Fatalf("fetcher received repo=%q pr=%q, expected o/r and 1", fetcher.gotRepo, fetcher.gotPR)
+		}
 	})
 }
 
@@ -292,6 +295,9 @@ func TestRunNameOnly(t *testing.T) {
 		}
 		if strings.TrimSpace(out) != "foo.go" {
 			t.Fatalf("runNameOnly() output = %q, expected %q", out, "foo.go")
+		}
+		if fetcher.gotRepo != "o/r" || fetcher.gotPR != "1" {
+			t.Fatalf("fetcher received repo=%q pr=%q, expected o/r and 1", fetcher.gotRepo, fetcher.gotPR)
 		}
 	})
 

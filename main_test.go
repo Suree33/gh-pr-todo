@@ -52,6 +52,18 @@ func captureColorOutput(t *testing.T, fn func()) string {
 	return buf.String()
 }
 
+// captureAll captures color.Output, os.Stdout, and os.Stderr while fn runs.
+// It mutates these globals, so callers must not use t.Parallel().
+func captureAll(t *testing.T, fn func()) (colorOut, stdout, stderr string) {
+	t.Helper()
+	stdout = captureStdout(t, func() {
+		stderr = captureStderr(t, func() {
+			colorOut = captureColorOutput(t, fn)
+		})
+	})
+	return colorOut, stdout, stderr
+}
+
 func captureStderr(t *testing.T, fn func()) string {
 	t.Helper()
 	return capturePipe(t, &os.Stderr, fn)
@@ -179,14 +191,9 @@ func TestRunMain(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var (
-				gotErr    error
-				gotStderr string
-			)
-			out := captureColorOutput(t, func() {
-				gotStderr = captureStderr(t, func() {
-					gotErr = runMain(tt.fetcher, "o/r", "1", tt.groupBy)
-				})
+			var gotErr error
+			out, stdout, gotStderr := captureAll(t, func() {
+				gotErr = runMain(tt.fetcher, "o/r", "1", tt.groupBy)
 			})
 
 			if tt.wantErr != "" {
@@ -207,6 +214,9 @@ func TestRunMain(t *testing.T) {
 			if tt.wantStderr != "" && !strings.Contains(gotStderr, tt.wantStderr) {
 				t.Fatalf("runMain() stderr = %q, expected to contain %q", gotStderr, tt.wantStderr)
 			}
+			if stdout != "" {
+				t.Fatalf("runMain() unexpected os.Stdout write = %q", stdout)
+			}
 			if tt.fetcher.gotRepo != "o/r" || tt.fetcher.gotPR != "1" {
 				t.Fatalf("fetcher received repo=%q pr=%q, expected o/r and 1", tt.fetcher.gotRepo, tt.fetcher.gotPR)
 			}
@@ -214,26 +224,29 @@ func TestRunMain(t *testing.T) {
 	}
 }
 
+func assertSilentChannels(t *testing.T, label, stdout, stderr string) {
+	t.Helper()
+	if stdout != "" {
+		t.Fatalf("%s unexpected os.Stdout write = %q", label, stdout)
+	}
+	if stderr != "" {
+		t.Fatalf("%s unexpected os.Stderr write = %q", label, stderr)
+	}
+}
+
 func TestRunCount(t *testing.T) {
 	t.Run("fetch error returned", func(t *testing.T) {
 		fetcher := &stubFetcher{diffErr: errors.New("boom")}
-		var (
-			err       error
-			gotStderr string
-		)
-		out := captureColorOutput(t, func() {
-			gotStderr = captureStderr(t, func() {
-				err = runCount(fetcher, "", "")
-			})
+		var err error
+		out, stdout, stderr := captureAll(t, func() {
+			err = runCount(fetcher, "", "")
 		})
 		if err == nil || err.Error() != "boom" {
 			t.Fatalf("runCount() error = %v, expected boom", err)
 		}
-		if gotStderr != "" {
-			t.Fatalf("runCount() unexpected stderr = %q", gotStderr)
-		}
+		assertSilentChannels(t, "runCount()", stdout, stderr)
 		if out != "" {
-			t.Fatalf("runCount() unexpected stdout = %q", out)
+			t.Fatalf("runCount() unexpected color.Output = %q", out)
 		}
 	})
 
@@ -242,21 +255,14 @@ func TestRunCount(t *testing.T) {
 			diff:  sampleDiff,
 			files: map[string][]byte{"foo.go": []byte("package foo\n// TODO: add bar\n")},
 		}
-		var (
-			err       error
-			gotStderr string
-		)
-		out := captureColorOutput(t, func() {
-			gotStderr = captureStderr(t, func() {
-				err = runCount(fetcher, "o/r", "1")
-			})
+		var err error
+		out, stdout, stderr := captureAll(t, func() {
+			err = runCount(fetcher, "o/r", "1")
 		})
 		if err != nil {
 			t.Fatalf("runCount() unexpected error = %v", err)
 		}
-		if gotStderr != "" {
-			t.Fatalf("runCount() unexpected stderr = %q", gotStderr)
-		}
+		assertSilentChannels(t, "runCount()", stdout, stderr)
 		if strings.TrimSpace(out) != "1" {
 			t.Fatalf("runCount() output = %q, expected %q", out, "1")
 		}
@@ -269,23 +275,16 @@ func TestRunCount(t *testing.T) {
 func TestRunNameOnly(t *testing.T) {
 	t.Run("fetch error returned", func(t *testing.T) {
 		fetcher := &stubFetcher{diffErr: errors.New("boom")}
-		var (
-			err       error
-			gotStderr string
-		)
-		out := captureColorOutput(t, func() {
-			gotStderr = captureStderr(t, func() {
-				err = runNameOnly(fetcher, "", "")
-			})
+		var err error
+		out, stdout, stderr := captureAll(t, func() {
+			err = runNameOnly(fetcher, "", "")
 		})
 		if err == nil || err.Error() != "boom" {
 			t.Fatalf("runNameOnly() error = %v, expected boom", err)
 		}
-		if gotStderr != "" {
-			t.Fatalf("runNameOnly() unexpected stderr = %q", gotStderr)
-		}
+		assertSilentChannels(t, "runNameOnly()", stdout, stderr)
 		if out != "" {
-			t.Fatalf("runNameOnly() unexpected stdout = %q", out)
+			t.Fatalf("runNameOnly() unexpected color.Output = %q", out)
 		}
 	})
 
@@ -294,21 +293,14 @@ func TestRunNameOnly(t *testing.T) {
 			diff:  sampleDiff,
 			files: map[string][]byte{"foo.go": []byte("package foo\n// TODO: add bar\n")},
 		}
-		var (
-			err       error
-			gotStderr string
-		)
-		out := captureColorOutput(t, func() {
-			gotStderr = captureStderr(t, func() {
-				err = runNameOnly(fetcher, "o/r", "1")
-			})
+		var err error
+		out, stdout, stderr := captureAll(t, func() {
+			err = runNameOnly(fetcher, "o/r", "1")
 		})
 		if err != nil {
 			t.Fatalf("runNameOnly() unexpected error = %v", err)
 		}
-		if gotStderr != "" {
-			t.Fatalf("runNameOnly() unexpected stderr = %q", gotStderr)
-		}
+		assertSilentChannels(t, "runNameOnly()", stdout, stderr)
 		if strings.TrimSpace(out) != "foo.go" {
 			t.Fatalf("runNameOnly() output = %q, expected %q", out, "foo.go")
 		}
@@ -319,21 +311,14 @@ func TestRunNameOnly(t *testing.T) {
 
 	t.Run("no TODOs prints nothing", func(t *testing.T) {
 		fetcher := &stubFetcher{diff: "", files: map[string][]byte{}}
-		var (
-			err       error
-			gotStderr string
-		)
-		out := captureColorOutput(t, func() {
-			gotStderr = captureStderr(t, func() {
-				err = runNameOnly(fetcher, "", "")
-			})
+		var err error
+		out, stdout, stderr := captureAll(t, func() {
+			err = runNameOnly(fetcher, "", "")
 		})
 		if err != nil {
 			t.Fatalf("runNameOnly() unexpected error = %v", err)
 		}
-		if gotStderr != "" {
-			t.Fatalf("runNameOnly() unexpected stderr = %q", gotStderr)
-		}
+		assertSilentChannels(t, "runNameOnly()", stdout, stderr)
 		if out != "" {
 			t.Fatalf("runNameOnly() output = %q, expected empty", out)
 		}

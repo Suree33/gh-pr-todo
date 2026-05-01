@@ -26,3 +26,8 @@ This is a GitHub CLI extension (`gh pr-todo`) that extracts TODO/FIXME/HACK/NOTE
 - Error handling: print to stderr and return early; no `log.Fatal` or panics.
 - Tests: table-driven with `t.Run`, use `reflect.DeepEqual` for struct comparison.
 - Naming: exported types in `pkg/types/`, unexported helpers in `internal/`.
+
+## Commits / PR Style
+
+- Use the `contextual-commit` skill when creating commits.
+- Prefer writing commits and pull requests in English.

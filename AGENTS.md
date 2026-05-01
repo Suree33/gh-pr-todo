@@ -31,3 +31,4 @@ This is a GitHub CLI extension (`gh pr-todo`) that extracts TODO/FIXME/HACK/NOTE
 
 - Use the `contextual-commit` skill when creating commits.
 - Prefer writing commits and pull requests in English.
+- When creating a PR, always fill out the PR body using `.github/PULL_REQUEST_TEMPLATE.md` as the template.

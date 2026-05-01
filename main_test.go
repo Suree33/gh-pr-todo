@@ -54,13 +54,23 @@ func captureColorOutput(t *testing.T, fn func()) string {
 
 func captureStderr(t *testing.T, fn func()) string {
 	t.Helper()
-	original := os.Stderr
+	return capturePipe(t, &os.Stderr, fn)
+}
+
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	return capturePipe(t, &os.Stdout, fn)
+}
+
+func capturePipe(t *testing.T, target **os.File, fn func()) string {
+	t.Helper()
+	original := *target
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatalf("os.Pipe() error = %v", err)
 	}
-	os.Stderr = w
-	defer func() { os.Stderr = original }()
+	*target = w
+	defer func() { *target = original }()
 
 	fn()
 
@@ -211,7 +221,7 @@ func TestRunCount(t *testing.T) {
 			err       error
 			gotStderr string
 		)
-		_ = captureColorOutput(t, func() {
+		out := captureColorOutput(t, func() {
 			gotStderr = captureStderr(t, func() {
 				err = runCount(fetcher, "", "")
 			})
@@ -221,6 +231,9 @@ func TestRunCount(t *testing.T) {
 		}
 		if gotStderr != "" {
 			t.Fatalf("runCount() unexpected stderr = %q", gotStderr)
+		}
+		if out != "" {
+			t.Fatalf("runCount() unexpected stdout = %q", out)
 		}
 	})
 
@@ -260,7 +273,7 @@ func TestRunNameOnly(t *testing.T) {
 			err       error
 			gotStderr string
 		)
-		_ = captureColorOutput(t, func() {
+		out := captureColorOutput(t, func() {
 			gotStderr = captureStderr(t, func() {
 				err = runNameOnly(fetcher, "", "")
 			})
@@ -270,6 +283,9 @@ func TestRunNameOnly(t *testing.T) {
 		}
 		if gotStderr != "" {
 			t.Fatalf("runNameOnly() unexpected stderr = %q", gotStderr)
+		}
+		if out != "" {
+			t.Fatalf("runNameOnly() unexpected stdout = %q", out)
 		}
 	})
 
@@ -342,9 +358,19 @@ func TestPrintUsage(t *testing.T) {
 	pflag.BoolVarP(&isHelp, "help", "h", false, "Display help information")
 	pflag.Var(&groupBy, "group-by", "Group TODO comments by: \"file\" or \"type\"")
 
-	out := captureColorOutput(t, func() {
-		printUsage()
+	var out string
+	stdout := captureStdout(t, func() {
+		out = captureColorOutput(t, func() {
+			printUsage()
+		})
 	})
+
+	if stdout != "" {
+		t.Fatalf("printUsage() leaked to os.Stdout: %q", stdout)
+	}
+	if !strings.HasSuffix(out, "\n\n") {
+		t.Fatalf("printUsage() output should end with a blank line, got tail %q", out[max(0, len(out)-4):])
+	}
 
 	wantContain := []string{
 		"View TODO comments in the PR diff.",

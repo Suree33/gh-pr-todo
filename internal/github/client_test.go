@@ -206,6 +206,9 @@ func TestFetchDiff(t *testing.T) {
 			if tt.wantWarning != "" && !strings.Contains(stderrOut, tt.wantWarning) {
 				t.Fatalf("stderr = %q, expected to contain %q", stderrOut, tt.wantWarning)
 			}
+			if tt.wantWarning == "" && stderrOut != "" {
+				t.Fatalf("stderr = %q, expected empty", stderrOut)
+			}
 		})
 	}
 }
@@ -389,9 +392,18 @@ func TestCollectTODOs(t *testing.T) {
 			diff:  sampleDiff,
 			files: map[string][]byte{"foo.go": []byte("package foo\n// TODO: add bar\n")},
 		}
-		todos, err := CollectTODOs(s, "o/r", "3")
+		var (
+			todos []types.TODO
+			err   error
+		)
+		stderrOut := captureStderr(t, func() {
+			todos, err = CollectTODOs(s, "o/r", "3")
+		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
+		}
+		if stderrOut != "" {
+			t.Fatalf("stderr = %q, expected empty", stderrOut)
 		}
 		if todos == nil {
 			t.Fatal("expected todos slice, got nil")

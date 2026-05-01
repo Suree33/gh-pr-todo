@@ -2,6 +2,7 @@
 package github
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -12,6 +13,8 @@ import (
 	"github.com/Suree33/gh-pr-todo/pkg/types"
 	"github.com/cli/go-gh/v2"
 )
+
+var ghExec func(args ...string) (bytes.Buffer, bytes.Buffer, error) = gh.Exec
 
 type PRFetcher interface {
 	FetchDiff(repo, pr string) (string, error)
@@ -53,7 +56,7 @@ func (c *Client) FetchDiff(repo, pr string) (string, error) {
 	if pr != "" {
 		args = append(args, pr)
 	}
-	stdOut, stdErr, err := gh.Exec(args...)
+	stdOut, stdErr, err := ghExec(args...)
 	if err != nil {
 		if msg := strings.TrimSpace(stdErr.String()); msg != "" {
 			return "", fmt.Errorf("%s", msg)
@@ -74,7 +77,7 @@ func (c *Client) FetchChangedFileContents(repo, pr, diffOutput string) (map[stri
 	if pr != "" {
 		args = append(args, pr)
 	}
-	stdOut, _, err := gh.Exec(args...)
+	stdOut, _, err := ghExec(args...)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +102,7 @@ func (c *Client) FetchChangedFileContents(repo, pr, diffOutput string) (map[stri
 			segments[i] = url.PathEscape(s)
 		}
 		apiPath := fmt.Sprintf("repos/%s/contents/%s?ref=%s", nwo, strings.Join(segments, "/"), sha)
-		out, _, err := gh.Exec("api", apiPath, "-H", "Accept: application/vnd.github.raw+json")
+		out, _, err := ghExec("api", apiPath, "-H", "Accept: application/vnd.github.raw+json")
 		if err != nil {
 			failedPaths = append(failedPaths, p)
 			continue

@@ -7,19 +7,20 @@ import (
 
 func TestGroupBy_Set(t *testing.T) {
 	tests := []struct {
-		name    string
-		initial GroupBy
-		input   string
-		want    GroupBy
-		wantErr bool
+		name         string
+		initial      GroupBy
+		input        string
+		want         GroupBy
+		wantErr      bool
+		wantErrParts []string
 	}{
 		{name: "file lowercase", input: "file", want: GroupByFile},
 		{name: "type lowercase", input: "type", want: GroupByType},
 		{name: "file mixed case", input: "FILE", want: GroupByFile},
 		{name: "type mixed case", input: "Type", want: GroupByType},
-		{name: "invalid", input: "bogus", wantErr: true},
-		{name: "empty", input: "", wantErr: true},
-		{name: "invalid does not mutate existing value", initial: GroupByFile, input: "bogus", want: GroupByFile, wantErr: true},
+		{name: "invalid", input: "bogus", wantErr: true, wantErrParts: []string{"bogus", "--group-by", `"file"`, `"type"`}},
+		{name: "empty", input: "", wantErr: true, wantErrParts: []string{`""`, "--group-by", `"file"`, `"type"`}},
+		{name: "invalid does not mutate existing value", initial: GroupByFile, input: "bogus", want: GroupByFile, wantErr: true, wantErrParts: []string{"bogus", "--group-by", `"file"`, `"type"`}},
 	}
 
 	for _, tt := range tests {
@@ -31,7 +32,7 @@ func TestGroupBy_Set(t *testing.T) {
 			}
 			if tt.wantErr {
 				msg := err.Error()
-				for _, want := range []string{tt.input, "--group-by", `"file"`, `"type"`} {
+				for _, want := range tt.wantErrParts {
 					if !strings.Contains(msg, want) {
 						t.Errorf("Set(%q) error %q does not contain %q", tt.input, msg, want)
 					}

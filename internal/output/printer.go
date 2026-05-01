@@ -39,7 +39,9 @@ func PrintFileNames(todos []types.TODO) {
 	for _, todo := range todos {
 		files[todo.Filename] = struct{}{}
 	}
-	for file := range files {
+	fileNames := slices.Collect(maps.Keys(files))
+	slices.Sort(fileNames)
+	for _, file := range fileNames {
 		fmt.Fprintln(color.Output, file)
 	}
 }
@@ -64,13 +66,15 @@ func printGroupedByFile(todos []types.TODO) {
 			maxLineNumberLen = n
 		}
 	}
-	for filename, todos := range files {
+	fileNames := slices.Collect(maps.Keys(files))
+	slices.Sort(fileNames)
+	for _, filename := range fileNames {
 		fmt.Fprintf(color.Output, "* %s\n", Blue(filename))
-		for _, todo := range todos {
+		for _, todo := range files[filename] {
 			lineStr := strconv.Itoa(todo.Line)
 			fmt.Fprintf(color.Output, "  %s%s: %s\n", strings.Repeat(" ", maxLineNumberLen-len(lineStr)), Green(lineStr), todo.Comment)
 		}
-		fmt.Println()
+		fmt.Fprintln(color.Output)
 	}
 }
 

@@ -70,6 +70,22 @@ gh pr-todo --group-by file
 - `--group-by`: Group TODO comments by file or type
 - `--name-only`: Display only names of the files containing TODO comments
 - `-c, --count`: Display only the number of TODO comments
+- `--no-ci-fail`: Disable non-zero exit when TODOs are found in CI (see below)
+
+### CI Mode
+
+When the `CI` environment variable is set to a truthy value (e.g. `1`, `true`, parsed via Go's `strconv.ParseBool`), `gh pr-todo` exits with status `1` if any TODO-style comments are detected in the PR diff. This makes it easy to fail a CI job when new TODOs slip into a pull request.
+
+```yaml
+# GitHub Actions example — CI=true is set automatically
+- run: gh pr-todo ${{ github.event.pull_request.number }}
+```
+
+Pass `--no-ci-fail` to keep the informational behavior even in CI:
+
+```bash
+gh pr-todo --count --no-ci-fail
+```
 
 ### Example Output
 

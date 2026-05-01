@@ -336,24 +336,57 @@ func TestIsCI(t *testing.T) {
 		{name: "empty returns false", value: "", set: true, want: false},
 		{name: "CI=1 returns true", value: "1", set: true, want: true},
 		{name: "CI=true returns true", value: "true", set: true, want: true},
+		{name: "CI=True (mixed case) returns true", value: "True", set: true, want: true},
+		{name: "CI=TRUE (uppercase) returns true", value: "TRUE", set: true, want: true},
+		{name: "CI=t returns true", value: "t", set: true, want: true},
+		{name: "CI=T returns true", value: "T", set: true, want: true},
+		{name: " CI= surrounded by whitespace returns true", value: "  true  ", set: true, want: true},
 		{name: "CI=false returns false", value: "false", set: true, want: false},
 		{name: "CI=0 returns false", value: "0", set: true, want: false},
-		{name: "CI=TRUE (uppercase) returns false", value: "TRUE", set: true, want: false},
 		{name: "CI=yes returns false", value: "yes", set: true, want: false},
+		{name: "CI=on returns false", value: "on", set: true, want: false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("CI", "")
 			if tt.set {
 				t.Setenv("CI", tt.value)
 			} else {
 				if err := os.Unsetenv("CI"); err != nil {
 					t.Fatalf("os.Unsetenv() error = %v", err)
 				}
+				t.Cleanup(func() { _ = os.Unsetenv("CI") })
 			}
 			if got := isCI(); got != tt.want {
 				t.Fatalf("isCI() = %v, expected %v (CI set=%v value=%q)", got, tt.want, tt.set, tt.value)
+			}
+		})
+	}
+}
+
+func TestExitCode(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		count    int
+		ci       bool
+		noCIFail bool
+		want     int
+	}{
+		{name: "error returns 1", err: errors.New("boom"), want: 1},
+		{name: "error in CI still 1", err: errors.New("boom"), ci: true, count: 5, want: 1},
+		{name: "no error no TODOs returns 0", want: 0},
+		{name: "no error TODOs not in CI returns 0", count: 3, want: 0},
+		{name: "no error TODOs in CI returns 1", count: 3, ci: true, want: 1},
+		{name: "no error TODOs in CI with no-ci-fail returns 0", count: 3, ci: true, noCIFail: true, want: 0},
+		{name: "no error zero TODOs in CI returns 0", count: 0, ci: true, want: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := exitCode(tt.err, tt.count, tt.ci, tt.noCIFail); got != tt.want {
+				t.Fatalf("exitCode(err=%v, count=%d, ci=%v, noCIFail=%v) = %d, expected %d",
+					tt.err, tt.count, tt.ci, tt.noCIFail, got, tt.want)
 			}
 		})
 	}
@@ -500,12 +533,14 @@ func TestPrintUsage(t *testing.T) {
 		nameOnly bool
 		isCount  bool
 		isHelp   bool
+		noCIFail bool
 		groupBy  = types.GroupByNone
 	)
 	pflag.StringVarP(&repo, "repo", "R", "", "Select another repository using the [HOST/]OWNER/REPO format")
 	pflag.BoolVar(&nameOnly, "name-only", false, "Display only names of the files containing TODO comments")
 	pflag.BoolVarP(&isCount, "count", "c", false, "Display only the number of TODO comments")
 	pflag.BoolVarP(&isHelp, "help", "h", false, "Display help information")
+	pflag.BoolVar(&noCIFail, "no-ci-fail", false, "Disable non-zero exit when TODOs are found in CI")
 	pflag.Var(&groupBy, "group-by", "Group TODO comments by: \"file\" or \"type\"")
 
 	var out string
@@ -532,6 +567,9 @@ func TestPrintUsage(t *testing.T) {
 		"--count",
 		"--help",
 		"--group-by",
+		"--no-ci-fail",
+		"ENVIRONMENT",
+		"CI",
 	}
 	for _, want := range wantContain {
 		if !strings.Contains(out, want) {

@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	ghclient "github.com/Suree33/gh-pr-todo/internal/github"
@@ -19,12 +21,14 @@ func main() {
 		nameOnly bool
 		isCount  bool
 		isHelp   bool
+		noCIFail bool
 		groupBy  = types.GroupByNone
 	)
 	pflag.StringVarP(&repo, "repo", "R", "", "Select another repository using the [HOST/]OWNER/REPO format")
 	pflag.BoolVar(&nameOnly, "name-only", false, "Display only names of the files containing TODO comments")
 	pflag.BoolVarP(&isCount, "count", "c", false, "Display only the number of TODO comments")
 	pflag.BoolVarP(&isHelp, "help", "h", false, "Display help information")
+	pflag.BoolVar(&noCIFail, "no-ci-fail", false, "Disable non-zero exit when TODOs are found in CI")
 	pflag.Var(&groupBy, "group-by", "Group TODO comments by: \"file\" or \"type\"")
 	pflag.Usage = printUsage
 	pflag.Parse()
@@ -67,19 +71,24 @@ func main() {
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
 	}
-	if count > 0 && isCI() {
-		os.Exit(1)
+	os.Exit(exitCode(err, count, isCI(), noCIFail))
+}
+
+func exitCode(err error, count int, ci, noCIFail bool) int {
+	if err != nil {
+		return 1
 	}
+	if ci && !noCIFail && count > 0 {
+		return 1
+	}
+	return 0
 }
 
 func isCI() bool {
-	switch os.Getenv("CI") {
-	case "1", "true":
-		return true
-	}
-	return false
+	v := strings.TrimSpace(os.Getenv("CI"))
+	ok, err := strconv.ParseBool(v)
+	return err == nil && ok
 }
 
 func printUsage() {
@@ -105,6 +114,9 @@ func printUsage() {
 		}
 	})
 	fmt.Fprintln(color.Output)
+	fmt.Fprintf(color.Output, "%s\n", output.Bold("ENVIRONMENT"))
+	fmt.Fprintf(color.Output, "  %s\n", "CI  When truthy (e.g. \"1\", \"true\"), exits non-zero if any TODO is found.")
+	fmt.Fprintf(color.Output, "  %s\n\n", "    Override with --no-ci-fail.")
 }
 
 func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy) (int, error) {

@@ -13,6 +13,8 @@ import (
 	"github.com/spf13/pflag"
 )
 
+var newFetcher func() ghclient.PRFetcher = func() ghclient.PRFetcher { return ghclient.NewClient() }
+
 func main() {
 	var (
 		repo     string
@@ -98,7 +100,7 @@ func runMain(repo, pr string, groupBy types.GroupBy) error {
 	sp.Suffix = fetchingMsg
 	sp.Start()
 
-	todos, err := ghclient.CollectTODOs(ghclient.NewClient(), repo, pr)
+	todos, err := ghclient.CollectTODOs(newFetcher(), repo, pr)
 	sp.Stop()
 
 	if err != nil {
@@ -118,7 +120,7 @@ func runMain(repo, pr string, groupBy types.GroupBy) error {
 }
 
 func runCount(repo, pr string) error {
-	todos, err := ghclient.CollectTODOs(ghclient.NewClient(), repo, pr)
+	todos, err := ghclient.CollectTODOs(newFetcher(), repo, pr)
 	if err != nil {
 		return err
 	}
@@ -127,7 +129,7 @@ func runCount(repo, pr string) error {
 }
 
 func runNameOnly(repo, pr string) error {
-	todos, err := ghclient.CollectTODOs(ghclient.NewClient(), repo, pr)
+	todos, err := ghclient.CollectTODOs(newFetcher(), repo, pr)
 	if err != nil {
 		return err
 	}

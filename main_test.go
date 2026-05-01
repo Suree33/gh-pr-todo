@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	ghclient "github.com/Suree33/gh-pr-todo/internal/github"
 	"github.com/Suree33/gh-pr-todo/pkg/types"
 	"github.com/fatih/color"
 	"github.com/spf13/pflag"
@@ -34,19 +33,9 @@ func (s *stubFetcher) FetchChangedFileContents(repo, pr, diff string) (map[strin
 	return s.files, s.filesErr
 }
 
-// withFetcher swaps the package-level newFetcher for the duration of a test.
-// Tests that use this helper MUST NOT call t.Parallel(): the swap is a global
-// mutation and would race with concurrent subtests.
-func withFetcher(t *testing.T, f ghclient.PRFetcher) {
-	t.Helper()
-	original := newFetcher
-	newFetcher = func() ghclient.PRFetcher { return f }
-	t.Cleanup(func() { newFetcher = original })
-}
-
-// captureColorOutput redirects color.Output and os.Stderr while fn runs and
-// returns whatever was written to color.Output. Like withFetcher it mutates
-// globals, so callers must not use t.Parallel().
+// captureColorOutput redirects color.Output while fn runs and returns whatever
+// was written there. It mutates the global color.Output and color.NoColor, so
+// callers must not use t.Parallel().
 func captureColorOutput(t *testing.T, fn func()) string {
 	t.Helper()
 	originalColorOutput := color.Output
@@ -104,6 +93,7 @@ func TestRunMain(t *testing.T) {
 		groupBy     types.GroupBy
 		wantErr     string
 		wantContain []string
+		wantStderr  string
 	}{
 		{
 			name:    "fetch error returned",
@@ -163,15 +153,29 @@ func TestRunMain(t *testing.T) {
 				"foo.go:2",
 			},
 		},
+		{
+			name: "FetchChangedFileContents error logs warning and continues",
+			fetcher: &stubFetcher{
+				diff:     sampleDiff,
+				files:    nil,
+				filesErr: errors.New("contents failed"),
+			},
+			wantContain: []string{
+				"Found 1 TODO comment(s)",
+			},
+			wantStderr: "Warning: could not fetch changed file contents",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			withFetcher(t, tt.fetcher)
-			var gotErr error
+			var (
+				gotErr    error
+				gotStderr string
+			)
 			out := captureColorOutput(t, func() {
-				_ = captureStderr(t, func() {
-					gotErr = runMain("o/r", "1", tt.groupBy)
+				gotStderr = captureStderr(t, func() {
+					gotErr = runMain(tt.fetcher, "o/r", "1", tt.groupBy)
 				})
 			})
 
@@ -187,6 +191,12 @@ func TestRunMain(t *testing.T) {
 					t.Fatalf("runMain() output = %q, expected to contain %q", out, want)
 				}
 			}
+			if tt.wantStderr == "" && gotStderr != "" {
+				t.Fatalf("runMain() unexpected stderr = %q", gotStderr)
+			}
+			if tt.wantStderr != "" && !strings.Contains(gotStderr, tt.wantStderr) {
+				t.Fatalf("runMain() stderr = %q, expected to contain %q", gotStderr, tt.wantStderr)
+			}
 			if tt.fetcher.gotRepo != "o/r" || tt.fetcher.gotPR != "1" {
 				t.Fatalf("fetcher received repo=%q pr=%q, expected o/r and 1", tt.fetcher.gotRepo, tt.fetcher.gotPR)
 			}
@@ -196,31 +206,43 @@ func TestRunMain(t *testing.T) {
 
 func TestRunCount(t *testing.T) {
 	t.Run("fetch error returned", func(t *testing.T) {
-		withFetcher(t, &stubFetcher{diffErr: errors.New("boom")})
-		var err error
+		fetcher := &stubFetcher{diffErr: errors.New("boom")}
+		var (
+			err       error
+			gotStderr string
+		)
 		_ = captureColorOutput(t, func() {
-			_ = captureStderr(t, func() {
-				err = runCount("", "")
+			gotStderr = captureStderr(t, func() {
+				err = runCount(fetcher, "", "")
 			})
 		})
 		if err == nil || err.Error() != "boom" {
 			t.Fatalf("runCount() error = %v, expected boom", err)
 		}
+		if gotStderr != "" {
+			t.Fatalf("runCount() unexpected stderr = %q", gotStderr)
+		}
 	})
 
 	t.Run("prints count on success", func(t *testing.T) {
-		withFetcher(t, &stubFetcher{
+		fetcher := &stubFetcher{
 			diff:  sampleDiff,
 			files: map[string][]byte{"foo.go": []byte("package foo\n// TODO: add bar\n")},
-		})
-		var err error
+		}
+		var (
+			err       error
+			gotStderr string
+		)
 		out := captureColorOutput(t, func() {
-			_ = captureStderr(t, func() {
-				err = runCount("o/r", "1")
+			gotStderr = captureStderr(t, func() {
+				err = runCount(fetcher, "o/r", "1")
 			})
 		})
 		if err != nil {
 			t.Fatalf("runCount() unexpected error = %v", err)
+		}
+		if gotStderr != "" {
+			t.Fatalf("runCount() unexpected stderr = %q", gotStderr)
 		}
 		if strings.TrimSpace(out) != "1" {
 			t.Fatalf("runCount() output = %q, expected %q", out, "1")
@@ -230,31 +252,43 @@ func TestRunCount(t *testing.T) {
 
 func TestRunNameOnly(t *testing.T) {
 	t.Run("fetch error returned", func(t *testing.T) {
-		withFetcher(t, &stubFetcher{diffErr: errors.New("boom")})
-		var err error
+		fetcher := &stubFetcher{diffErr: errors.New("boom")}
+		var (
+			err       error
+			gotStderr string
+		)
 		_ = captureColorOutput(t, func() {
-			_ = captureStderr(t, func() {
-				err = runNameOnly("", "")
+			gotStderr = captureStderr(t, func() {
+				err = runNameOnly(fetcher, "", "")
 			})
 		})
 		if err == nil || err.Error() != "boom" {
 			t.Fatalf("runNameOnly() error = %v, expected boom", err)
 		}
+		if gotStderr != "" {
+			t.Fatalf("runNameOnly() unexpected stderr = %q", gotStderr)
+		}
 	})
 
 	t.Run("prints file names on success", func(t *testing.T) {
-		withFetcher(t, &stubFetcher{
+		fetcher := &stubFetcher{
 			diff:  sampleDiff,
 			files: map[string][]byte{"foo.go": []byte("package foo\n// TODO: add bar\n")},
-		})
-		var err error
+		}
+		var (
+			err       error
+			gotStderr string
+		)
 		out := captureColorOutput(t, func() {
-			_ = captureStderr(t, func() {
-				err = runNameOnly("o/r", "1")
+			gotStderr = captureStderr(t, func() {
+				err = runNameOnly(fetcher, "o/r", "1")
 			})
 		})
 		if err != nil {
 			t.Fatalf("runNameOnly() unexpected error = %v", err)
+		}
+		if gotStderr != "" {
+			t.Fatalf("runNameOnly() unexpected stderr = %q", gotStderr)
 		}
 		if strings.TrimSpace(out) != "foo.go" {
 			t.Fatalf("runNameOnly() output = %q, expected %q", out, "foo.go")
@@ -262,15 +296,21 @@ func TestRunNameOnly(t *testing.T) {
 	})
 
 	t.Run("no TODOs prints nothing", func(t *testing.T) {
-		withFetcher(t, &stubFetcher{diff: "", files: map[string][]byte{}})
-		var err error
+		fetcher := &stubFetcher{diff: "", files: map[string][]byte{}}
+		var (
+			err       error
+			gotStderr string
+		)
 		out := captureColorOutput(t, func() {
-			_ = captureStderr(t, func() {
-				err = runNameOnly("", "")
+			gotStderr = captureStderr(t, func() {
+				err = runNameOnly(fetcher, "", "")
 			})
 		})
 		if err != nil {
 			t.Fatalf("runNameOnly() unexpected error = %v", err)
+		}
+		if gotStderr != "" {
+			t.Fatalf("runNameOnly() unexpected stderr = %q", gotStderr)
 		}
 		if out != "" {
 			t.Fatalf("runNameOnly() output = %q, expected empty", out)

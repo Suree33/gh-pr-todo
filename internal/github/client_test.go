@@ -192,6 +192,9 @@ func TestFetchDiff(t *testing.T) {
 				if gotErr.Error() != tt.wantErr {
 					t.Fatalf("FetchDiff() error = %q, expected %q", gotErr.Error(), tt.wantErr)
 				}
+				if stderrOut != "" {
+					t.Fatalf("stderr = %q, expected empty on error path", stderrOut)
+				}
 				return
 			}
 			if gotErr != nil {
@@ -205,6 +208,9 @@ func TestFetchDiff(t *testing.T) {
 			}
 			if tt.wantWarning != "" && !strings.Contains(stderrOut, tt.wantWarning) {
 				t.Fatalf("stderr = %q, expected to contain %q", stderrOut, tt.wantWarning)
+			}
+			if tt.wantWarning == "" && stderrOut != "" {
+				t.Fatalf("stderr = %q, expected empty", stderrOut)
 			}
 		})
 	}
@@ -329,15 +335,16 @@ func TestFetchChangedFileContents(t *testing.T) {
 }
 
 type stubFetcher struct {
-	diff      string
-	diffErr   error
-	files     map[string][]byte
-	filesErr  error
-	gotRepoFD string
-	gotPRFD   string
-	gotRepoFC string
-	gotPRFC   string
-	gotDiffFC string
+	diff          string
+	diffErr       error
+	files         map[string][]byte
+	filesErr      error
+	gotRepoFD     string
+	gotPRFD       string
+	gotRepoFC     string
+	gotPRFC       string
+	gotDiffFC     string
+	fetchFCCalled bool
 }
 
 func (s *stubFetcher) FetchDiff(repo, pr string) (string, error) {
@@ -346,6 +353,7 @@ func (s *stubFetcher) FetchDiff(repo, pr string) (string, error) {
 }
 
 func (s *stubFetcher) FetchChangedFileContents(repo, pr, diff string) (map[string][]byte, error) {
+	s.fetchFCCalled = true
 	s.gotRepoFC, s.gotPRFC, s.gotDiffFC = repo, pr, diff
 	return s.files, s.filesErr
 }
@@ -353,14 +361,33 @@ func (s *stubFetcher) FetchChangedFileContents(repo, pr, diff string) (map[strin
 func TestCollectTODOs(t *testing.T) {
 	t.Run("FetchDiff error returned", func(t *testing.T) {
 		s := &stubFetcher{diffErr: errors.New("diff failed")}
-		todos, err := CollectTODOs(s, "o/r", "1")
+		var (
+			todos []types.TODO
+			err   error
+		)
+		stderrOut := captureStderr(t, func() {
+			todos, err = CollectTODOs(s, "o/r", "1")
+		})
 		if err == nil || err.Error() != "diff failed" {
 			t.Fatalf("expected diff failed error, got %v", err)
 		}
 		if todos != nil {
 			t.Fatalf("expected nil todos, got %v", todos)
 		}
+		if stderrOut != "" {
+			t.Fatalf("stderr = %q, expected empty", stderrOut)
+		}
+		if s.fetchFCCalled {
+			t.Fatal("FetchChangedFileContents should not be called when FetchDiff fails")
+		}
 	})
+
+	expectedTODO := types.TODO{
+		Filename: "foo.go",
+		Line:     2,
+		Comment:  "// TODO: add bar",
+		Type:     "TODO",
+	}
 
 	t.Run("FetchChangedFileContents error logs warning and continues", func(t *testing.T) {
 		s := &stubFetcher{
@@ -379,8 +406,8 @@ func TestCollectTODOs(t *testing.T) {
 		if !strings.Contains(stderrOut, "Warning: could not fetch changed file contents") {
 			t.Fatalf("expected warning on stderr, got %q", stderrOut)
 		}
-		if todos == nil {
-			t.Fatal("expected todos slice (possibly empty), got nil")
+		if !reflect.DeepEqual(todos, []types.TODO{expectedTODO}) {
+			t.Fatalf("todos = %#v, expected %#v", todos, []types.TODO{expectedTODO})
 		}
 	})
 
@@ -389,15 +416,27 @@ func TestCollectTODOs(t *testing.T) {
 			diff:  sampleDiff,
 			files: map[string][]byte{"foo.go": []byte("package foo\n// TODO: add bar\n")},
 		}
-		todos, err := CollectTODOs(s, "o/r", "3")
+		var (
+			todos []types.TODO
+			err   error
+		)
+		stderrOut := captureStderr(t, func() {
+			todos, err = CollectTODOs(s, "o/r", "3")
+		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if todos == nil {
-			t.Fatal("expected todos slice, got nil")
+		if stderrOut != "" {
+			t.Fatalf("stderr = %q, expected empty", stderrOut)
+		}
+		if !reflect.DeepEqual(todos, []types.TODO{expectedTODO}) {
+			t.Fatalf("todos = %#v, expected %#v", todos, []types.TODO{expectedTODO})
 		}
 		if s.gotRepoFD != "o/r" || s.gotPRFD != "3" {
 			t.Fatalf("FetchDiff received repo=%q pr=%q", s.gotRepoFD, s.gotPRFD)
+		}
+		if s.gotRepoFC != "o/r" || s.gotPRFC != "3" {
+			t.Fatalf("FetchChangedFileContents received repo=%q pr=%q", s.gotRepoFC, s.gotPRFC)
 		}
 		if s.gotDiffFC != sampleDiff {
 			t.Fatalf("FetchChangedFileContents received diff %q", s.gotDiffFC)

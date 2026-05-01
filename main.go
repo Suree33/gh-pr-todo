@@ -52,14 +52,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	fetcher := ghclient.NewClient()
 	var err error
 	switch {
 	case nameOnly:
-		err = runNameOnly(repo, pr)
+		err = runNameOnly(fetcher, repo, pr)
 	case isCount:
-		err = runCount(repo, pr)
+		err = runCount(fetcher, repo, pr)
 	default:
-		err = runMain(repo, pr, groupBy)
+		err = runMain(fetcher, repo, pr, groupBy)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -89,16 +90,16 @@ func printUsage() {
 			fmt.Fprintf(color.Output, "      --%-*s %s\n", maxLen+2, f.Name, f.Usage)
 		}
 	})
-	fmt.Println()
+	fmt.Fprintln(color.Output)
 }
 
-func runMain(repo, pr string, groupBy types.GroupBy) error {
+func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy) error {
 	sp := spinner.New(spinner.CharSets[14], 40*time.Millisecond)
 	fetchingMsg := " Fetching PR diff..."
 	sp.Suffix = fetchingMsg
 	sp.Start()
 
-	todos, err := ghclient.CollectTODOs(ghclient.NewClient(), repo, pr)
+	todos, err := ghclient.CollectTODOs(fetcher, repo, pr)
 	sp.Stop()
 
 	if err != nil {
@@ -117,8 +118,8 @@ func runMain(repo, pr string, groupBy types.GroupBy) error {
 	return nil
 }
 
-func runCount(repo, pr string) error {
-	todos, err := ghclient.CollectTODOs(ghclient.NewClient(), repo, pr)
+func runCount(fetcher ghclient.PRFetcher, repo, pr string) error {
+	todos, err := ghclient.CollectTODOs(fetcher, repo, pr)
 	if err != nil {
 		return err
 	}
@@ -126,8 +127,8 @@ func runCount(repo, pr string) error {
 	return nil
 }
 
-func runNameOnly(repo, pr string) error {
-	todos, err := ghclient.CollectTODOs(ghclient.NewClient(), repo, pr)
+func runNameOnly(fetcher ghclient.PRFetcher, repo, pr string) error {
+	todos, err := ghclient.CollectTODOs(fetcher, repo, pr)
 	if err != nil {
 		return err
 	}

@@ -192,6 +192,9 @@ func TestFetchDiff(t *testing.T) {
 				if gotErr.Error() != tt.wantErr {
 					t.Fatalf("FetchDiff() error = %q, expected %q", gotErr.Error(), tt.wantErr)
 				}
+				if stderrOut != "" {
+					t.Fatalf("stderr = %q, expected empty on error path", stderrOut)
+				}
 				return
 			}
 			if gotErr != nil {
@@ -365,6 +368,13 @@ func TestCollectTODOs(t *testing.T) {
 		}
 	})
 
+	expectedTODO := types.TODO{
+		Filename: "foo.go",
+		Line:     2,
+		Comment:  "// TODO: add bar",
+		Type:     "TODO",
+	}
+
 	t.Run("FetchChangedFileContents error logs warning and continues", func(t *testing.T) {
 		s := &stubFetcher{
 			diff:     sampleDiff,
@@ -382,8 +392,8 @@ func TestCollectTODOs(t *testing.T) {
 		if !strings.Contains(stderrOut, "Warning: could not fetch changed file contents") {
 			t.Fatalf("expected warning on stderr, got %q", stderrOut)
 		}
-		if todos == nil {
-			t.Fatal("expected todos slice (possibly empty), got nil")
+		if !reflect.DeepEqual(todos, []types.TODO{expectedTODO}) {
+			t.Fatalf("todos = %#v, expected %#v", todos, []types.TODO{expectedTODO})
 		}
 	})
 
@@ -405,11 +415,14 @@ func TestCollectTODOs(t *testing.T) {
 		if stderrOut != "" {
 			t.Fatalf("stderr = %q, expected empty", stderrOut)
 		}
-		if todos == nil {
-			t.Fatal("expected todos slice, got nil")
+		if !reflect.DeepEqual(todos, []types.TODO{expectedTODO}) {
+			t.Fatalf("todos = %#v, expected %#v", todos, []types.TODO{expectedTODO})
 		}
 		if s.gotRepoFD != "o/r" || s.gotPRFD != "3" {
 			t.Fatalf("FetchDiff received repo=%q pr=%q", s.gotRepoFD, s.gotPRFD)
+		}
+		if s.gotRepoFC != "o/r" || s.gotPRFC != "3" {
+			t.Fatalf("FetchChangedFileContents received repo=%q pr=%q", s.gotRepoFC, s.gotPRFC)
 		}
 		if s.gotDiffFC != sampleDiff {
 			t.Fatalf("FetchChangedFileContents received diff %q", s.gotDiffFC)

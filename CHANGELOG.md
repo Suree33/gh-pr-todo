@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.0.0](https://github.com/Suree33/gh-pr-todo/compare/v0.5.2...v1.0.0) (2026-05-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* **release:** remove bump-minor-pre-major=true for v1.0.0 release
+
+### Features
+
+* **ci:** exit non-zero when TODOs are detected in CI environment ([#70](https://github.com/Suree33/gh-pr-todo/issues/70)) ([7a93610](https://github.com/Suree33/gh-pr-todo/commit/7a936105f59f28afa4dcc4f436ee9ebbab54e359))
+* **output:** emit GitHub Actions workflow commands for TODOs ([#72](https://github.com/Suree33/gh-pr-todo/issues/72)) ([65700bc](https://github.com/Suree33/gh-pr-todo/commit/65700bc0ac30da1316282cc61ede6f120288a445))
+
+
+### Miscellaneous Chores
+
+* **deps:** bump googleapis/release-please-action from 4.4.1 to 5.0.0 ([#59](https://github.com/Suree33/gh-pr-todo/issues/59)) ([a463eb2](https://github.com/Suree33/gh-pr-todo/commit/a463eb2002574fbb4964d28b76c9e7407604bdc6))
+* **release:** remove bump-minor-pre-major=true for v1.0.0 release ([8f96e40](https://github.com/Suree33/gh-pr-todo/commit/8f96e4027b6f28598a4eb4a9888df990126096dd))
+* **workflow:** add actionlint job and refactor CI with YAML anchors ([#69](https://github.com/Suree33/gh-pr-todo/issues/69)) ([46879bc](https://github.com/Suree33/gh-pr-todo/commit/46879bcd1332aff1545d33be85db9b220d9b9056))
+
 ## [0.5.2](https://github.com/Suree33/gh-pr-todo/compare/v0.5.1...v0.5.2) (2026-04-28)
 
 

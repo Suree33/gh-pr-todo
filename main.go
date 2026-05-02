@@ -124,7 +124,8 @@ func printUsage() {
 	fmt.Fprintf(color.Output, "%s\n", output.Bold("ENVIRONMENT"))
 	fmt.Fprintf(color.Output, "  %s\n", "CI               When truthy (e.g. \"1\", \"true\"), exits non-zero if any TODO is found.")
 	fmt.Fprintf(color.Output, "  %s\n", "                 Override with --no-ci-fail.")
-	fmt.Fprintf(color.Output, "  %s\n\n", "GITHUB_ACTIONS   When truthy, also emits GitHub Actions workflow commands so each TODO appears as an annotation.")
+	fmt.Fprintf(color.Output, "  %s\n", "GITHUB_ACTIONS   When truthy, emits GitHub Actions workflow commands so each TODO appears as an annotation.")
+	fmt.Fprintf(color.Output, "  %s\n\n", "                 Only emitted in the default mode; --count and --name-only stay machine-readable.")
 }
 
 func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy, gha bool) (int, error) {

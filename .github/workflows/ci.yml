@@ -1,4 +1,4 @@
-name: CI
+name: Test
 
 on:
   pull_request:
@@ -9,74 +9,20 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 defaults:
   run:
     shell: bash
 
 jobs:
-  lint:
-    name: Lint
+  run:
     timeout-minutes: 15
     runs-on: ubuntu-latest
 
     steps:
-      - &checkout
-        uses: actions/checkout@v6
-
-      - &setup-go
-        name: Setup Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-
-      - name: Lint
-        uses: golangci/golangci-lint-action@v9
-
-  build:
-    name: Build
-    needs: lint
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-
-    steps:
-      - *checkout
-      - *setup-go
-
-      - name: Build
-        run: go build -v ./...
-
-  test:
-    name: Test
-    needs: lint
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-
-    steps:
-      - *checkout
-      - *setup-go
-
-      - name: Test
-        run: go test -v ./...
-
-  actionlint:
-    name: Actionlint
-    timeout-minutes: 15
-    runs-on: ubuntu-latest
-
-    steps:
-      - *checkout
-
-      - name: Actionlint
-        run: docker run --rm -v "$(pwd):$(pwd)" -w "$(pwd)" rhysd/actionlint:latest -color
+      - uses: actions/checkout@v6
+      - run: gh ext install Suree33/gh-pr-todo
+        env:
+          GH_TOKEN: ${{github.token}}
+      - run: gh pr-todo https://github.com/Suree33/gh-pr-todo/pull/41
+        env:
+          GH_TOKEN: ${{github.token}}

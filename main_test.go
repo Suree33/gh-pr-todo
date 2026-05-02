@@ -349,6 +349,7 @@ func TestIsCI(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("GITHUB_ACTIONS", "")
 			if tt.set {
 				t.Setenv("CI", tt.value)
 			} else {
@@ -359,6 +360,38 @@ func TestIsCI(t *testing.T) {
 			}
 			if got := isCI(); got != tt.want {
 				t.Fatalf("isCI() = %v, expected %v (CI set=%v value=%q)", got, tt.want, tt.set, tt.value)
+			}
+		})
+	}
+}
+
+func TestIsCIPromotedByGitHubActions(t *testing.T) {
+	tests := []struct {
+		name        string
+		ci          string
+		ciSet       bool
+		githubValue string
+		want        bool
+	}{
+		{name: "GITHUB_ACTIONS=true forces CI true even when CI unset", ciSet: false, githubValue: "true", want: true},
+		{name: "GITHUB_ACTIONS=true forces CI true even when CI=false", ci: "false", ciSet: true, githubValue: "true", want: true},
+		{name: "GITHUB_ACTIONS=1 forces CI true even when CI=0", ci: "0", ciSet: true, githubValue: "1", want: true},
+		{name: "GITHUB_ACTIONS=false does not force CI true", ci: "false", ciSet: true, githubValue: "false", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.ciSet {
+				t.Setenv("CI", tt.ci)
+			} else {
+				if err := os.Unsetenv("CI"); err != nil {
+					t.Fatalf("os.Unsetenv() error = %v", err)
+				}
+				t.Cleanup(func() { _ = os.Unsetenv("CI") })
+			}
+			t.Setenv("GITHUB_ACTIONS", tt.githubValue)
+			if got := isCI(); got != tt.want {
+				t.Fatalf("isCI() = %v, expected %v (CI set=%v value=%q, GITHUB_ACTIONS=%q)", got, tt.want, tt.ciSet, tt.ci, tt.githubValue)
 			}
 		})
 	}

@@ -87,6 +87,9 @@ func exitCode(err error, count int, ci, noCIFail bool) int {
 }
 
 func isCI() bool {
+	if isGitHubActions() {
+		return true
+	}
 	v := strings.TrimSpace(os.Getenv("CI"))
 	ok, err := strconv.ParseBool(v)
 	return err == nil && ok
@@ -125,7 +128,8 @@ func printUsage() {
 	fmt.Fprintf(color.Output, "  %s\n", "CI               When truthy (e.g. \"1\", \"true\"), exits non-zero if any TODO is found.")
 	fmt.Fprintf(color.Output, "  %s\n", "                 Override with --no-ci-fail.")
 	fmt.Fprintf(color.Output, "  %s\n", "GITHUB_ACTIONS   When truthy, emits GitHub Actions workflow commands so each TODO appears as an annotation.")
-	fmt.Fprintf(color.Output, "  %s\n\n", "                 Only emitted in the default mode; --count and --name-only stay machine-readable.")
+	fmt.Fprintf(color.Output, "  %s\n", "                 Only emitted in the default mode; --count and --name-only stay machine-readable.")
+	fmt.Fprintf(color.Output, "  %s\n\n", "                 Implies CI=true, so --no-ci-fail is required to suppress the non-zero exit.")
 }
 
 func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy, gha bool) (int, error) {

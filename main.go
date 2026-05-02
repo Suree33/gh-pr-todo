@@ -64,9 +64,9 @@ func main() {
 	)
 	switch {
 	case nameOnly:
-		count, err = runNameOnly(fetcher, repo, pr, gha)
+		count, err = runNameOnly(fetcher, repo, pr)
 	case isCount:
-		count, err = runCount(fetcher, repo, pr, gha)
+		count, err = runCount(fetcher, repo, pr)
 	default:
 		count, err = runMain(fetcher, repo, pr, groupBy, gha)
 	}
@@ -128,13 +128,18 @@ func printUsage() {
 }
 
 func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy, gha bool) (int, error) {
-	sp := spinner.New(spinner.CharSets[14], 40*time.Millisecond)
 	fetchingMsg := " Fetching PR diff..."
-	sp.Suffix = fetchingMsg
-	sp.Start()
+	var sp *spinner.Spinner
+	if !gha {
+		sp = spinner.New(spinner.CharSets[14], 40*time.Millisecond)
+		sp.Suffix = fetchingMsg
+		sp.Start()
+	}
 
 	todos, err := ghclient.CollectTODOs(fetcher, repo, pr)
-	sp.Stop()
+	if sp != nil {
+		sp.Stop()
+	}
 
 	if err != nil {
 		fmt.Fprintf(color.Output, "%s%s\n", output.Red("✗"), fetchingMsg)
@@ -155,26 +160,20 @@ func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy,
 	return len(todos), nil
 }
 
-func runCount(fetcher ghclient.PRFetcher, repo, pr string, gha bool) (int, error) {
+func runCount(fetcher ghclient.PRFetcher, repo, pr string) (int, error) {
 	todos, err := ghclient.CollectTODOs(fetcher, repo, pr)
 	if err != nil {
 		return 0, err
 	}
 	output.PrintCount(todos)
-	if gha {
-		output.PrintWorkflowCommands(todos)
-	}
 	return len(todos), nil
 }
 
-func runNameOnly(fetcher ghclient.PRFetcher, repo, pr string, gha bool) (int, error) {
+func runNameOnly(fetcher ghclient.PRFetcher, repo, pr string) (int, error) {
 	todos, err := ghclient.CollectTODOs(fetcher, repo, pr)
 	if err != nil {
 		return 0, err
 	}
 	output.PrintFileNames(todos)
-	if gha {
-		output.PrintWorkflowCommands(todos)
-	}
 	return len(todos), nil
 }

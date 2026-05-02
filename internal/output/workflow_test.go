@@ -31,6 +31,27 @@ func TestPrintWorkflowCommands(t *testing.T) {
 	}
 }
 
+func TestPrintWorkflowCommandsAppliesEscaping(t *testing.T) {
+	todos := []types.TODO{
+		{
+			Filename: "weird:dir,name/with%pct.go",
+			Line:     42,
+			Comment:  "// TODO: 100% rate\r\nrest of comment",
+			Type:     "fix,me",
+		},
+	}
+
+	want := "::notice file=weird%3Adir%2Cname/with%25pct.go,line=42,title=fix%2Cme::" +
+		"// TODO: 100%25 rate%0D%0Arest of comment\n"
+
+	got := captureOutput(t, func() {
+		PrintWorkflowCommands(todos)
+	})
+	if got != want {
+		t.Fatalf("PrintWorkflowCommands escaping mismatch\ngot:  %q\nwant: %q", got, want)
+	}
+}
+
 func TestPrintWorkflowCommandsEmpty(t *testing.T) {
 	got := captureOutput(t, func() {
 		PrintWorkflowCommands(nil)

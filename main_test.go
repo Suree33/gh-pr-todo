@@ -239,7 +239,7 @@ func TestRunCount(t *testing.T) {
 		fetcher := &stubFetcher{diffErr: errors.New("boom")}
 		var err error
 		out, stdout, stderr := captureAll(t, func() {
-			_, err = runCount(fetcher, "", "", false)
+			_, err = runCount(fetcher, "", "")
 		})
 		if err == nil || err.Error() != "boom" {
 			t.Fatalf("runCount() error = %v, expected boom", err)
@@ -257,7 +257,7 @@ func TestRunCount(t *testing.T) {
 		}
 		var err error
 		out, stdout, stderr := captureAll(t, func() {
-			_, err = runCount(fetcher, "o/r", "1", false)
+			_, err = runCount(fetcher, "o/r", "1")
 		})
 		if err != nil {
 			t.Fatalf("runCount() unexpected error = %v", err)
@@ -277,7 +277,7 @@ func TestRunNameOnly(t *testing.T) {
 		fetcher := &stubFetcher{diffErr: errors.New("boom")}
 		var err error
 		out, stdout, stderr := captureAll(t, func() {
-			_, err = runNameOnly(fetcher, "", "", false)
+			_, err = runNameOnly(fetcher, "", "")
 		})
 		if err == nil || err.Error() != "boom" {
 			t.Fatalf("runNameOnly() error = %v, expected boom", err)
@@ -295,7 +295,7 @@ func TestRunNameOnly(t *testing.T) {
 		}
 		var err error
 		out, stdout, stderr := captureAll(t, func() {
-			_, err = runNameOnly(fetcher, "o/r", "1", false)
+			_, err = runNameOnly(fetcher, "o/r", "1")
 		})
 		if err != nil {
 			t.Fatalf("runNameOnly() unexpected error = %v", err)
@@ -313,7 +313,7 @@ func TestRunNameOnly(t *testing.T) {
 		fetcher := &stubFetcher{diff: "", files: map[string][]byte{}}
 		var err error
 		out, stdout, stderr := captureAll(t, func() {
-			_, err = runNameOnly(fetcher, "", "", false)
+			_, err = runNameOnly(fetcher, "", "")
 		})
 		if err != nil {
 			t.Fatalf("runNameOnly() unexpected error = %v", err)
@@ -422,21 +422,23 @@ func TestRunFunctionsEmitWorkflowCommands(t *testing.T) {
 		}
 	})
 
-	t.Run("runCount emits when gha=true", func(t *testing.T) {
+	t.Run("runCount stdout stays plain", func(t *testing.T) {
+		t.Setenv("GITHUB_ACTIONS", "true")
 		out, _, _ := captureAll(t, func() {
-			_, _ = runCount(fetcher, "o/r", "1", true)
+			_, _ = runCount(fetcher, "o/r", "1")
 		})
-		if !strings.Contains(out, wantLine) {
-			t.Fatalf("runCount(gha=true) output = %q, expected to contain %q", out, wantLine)
+		if strings.Contains(out, "::notice") || strings.Contains(out, "::warning") {
+			t.Fatalf("runCount must not emit workflow commands; got %q", out)
 		}
 	})
 
-	t.Run("runNameOnly emits when gha=true", func(t *testing.T) {
+	t.Run("runNameOnly stdout stays plain", func(t *testing.T) {
+		t.Setenv("GITHUB_ACTIONS", "true")
 		out, _, _ := captureAll(t, func() {
-			_, _ = runNameOnly(fetcher, "o/r", "1", true)
+			_, _ = runNameOnly(fetcher, "o/r", "1")
 		})
-		if !strings.Contains(out, wantLine) {
-			t.Fatalf("runNameOnly(gha=true) output = %q, expected to contain %q", out, wantLine)
+		if strings.Contains(out, "::notice") || strings.Contains(out, "::warning") {
+			t.Fatalf("runNameOnly must not emit workflow commands; got %q", out)
 		}
 	})
 }
@@ -527,7 +529,7 @@ index 0000000..1111111 100644
 			var gotCount int
 			var gotErr error
 			_, _, _ = captureAll(t, func() {
-				gotCount, gotErr = runCount(tt.fetcher, "o/r", "1", false)
+				gotCount, gotErr = runCount(tt.fetcher, "o/r", "1")
 			})
 			if gotErr != nil {
 				t.Fatalf("runCount() unexpected error = %v", gotErr)
@@ -541,7 +543,7 @@ index 0000000..1111111 100644
 			var gotCount int
 			var gotErr error
 			_, _, _ = captureAll(t, func() {
-				gotCount, gotErr = runNameOnly(tt.fetcher, "o/r", "1", false)
+				gotCount, gotErr = runNameOnly(tt.fetcher, "o/r", "1")
 			})
 			if gotErr != nil {
 				t.Fatalf("runNameOnly() unexpected error = %v", gotErr)
@@ -574,7 +576,7 @@ func TestRunFunctionsReturnZeroCountOnError(t *testing.T) {
 		var gotCount int
 		var gotErr error
 		_, _, _ = captureAll(t, func() {
-			gotCount, gotErr = runCount(fetcher, "", "", false)
+			gotCount, gotErr = runCount(fetcher, "", "")
 		})
 		if gotErr == nil {
 			t.Fatalf("runCount() expected error, got nil")
@@ -589,7 +591,7 @@ func TestRunFunctionsReturnZeroCountOnError(t *testing.T) {
 		var gotCount int
 		var gotErr error
 		_, _, _ = captureAll(t, func() {
-			gotCount, gotErr = runNameOnly(fetcher, "", "", false)
+			gotCount, gotErr = runNameOnly(fetcher, "", "")
 		})
 		if gotErr == nil {
 			t.Fatalf("runNameOnly() expected error, got nil")

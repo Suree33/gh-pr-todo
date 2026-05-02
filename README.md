@@ -94,7 +94,9 @@ When `GITHUB_ACTIONS=true` (set automatically by the GitHub Actions runner), `gh
 - `TODO`, `NOTE` → `::notice` annotations
 - `FIXME`, `HACK`, `XXX`, `BUG` → `::warning` annotations
 
-Each annotation is anchored to the file and line of the TODO, with the keyword used as the annotation title. Regular human-readable output is still printed.
+Each annotation is anchored to the file and line of the TODO, with the keyword used as the annotation title. Regular human-readable output is still printed, and the spinner is suppressed to keep Actions logs clean.
+
+Workflow commands are only emitted in the default mode. The machine-readable modes `--count` and `--name-only` keep their plain output unchanged so that `count=$(gh pr-todo --count)` and similar shell pipelines stay reliable in Actions.
 
 ### Example Output
 

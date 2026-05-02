@@ -74,7 +74,7 @@ gh pr-todo --group-by file
 
 ### CI Mode
 
-When the `CI` environment variable is set to a truthy value (e.g. `1`, `true`, parsed via Go's `strconv.ParseBool`), `gh pr-todo` exits with status `1` if any TODO-style comments are detected in the PR diff. This makes it easy to fail a CI job when new TODOs slip into a pull request.
+When the `CI` environment variable is set to a truthy value (e.g. `1`, `true`, parsed via Go's `strconv.ParseBool`), `gh pr-todo` exits with status `1` if any TODO-style comments are detected in the PR diff. This makes it easy to fail a CI job when new TODOs slip into a pull request. `GITHUB_ACTIONS=true` (set automatically by the GitHub Actions runner) is treated as `CI=true` even when the `CI` variable is missing or falsy.
 
 ```yaml
 # GitHub Actions example — CI=true is set automatically
@@ -86,6 +86,17 @@ Pass `--no-ci-fail` to keep the informational behavior even in CI:
 ```bash
 gh pr-todo --count --no-ci-fail
 ```
+
+### GitHub Actions Annotations
+
+When `GITHUB_ACTIONS=true` (set automatically by the GitHub Actions runner), `gh pr-todo` additionally emits [workflow commands](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands) so each TODO appears as an annotation on the workflow run and pull request:
+
+- `TODO`, `NOTE` → `::notice` annotations
+- `FIXME`, `HACK`, `XXX`, `BUG` → `::warning` annotations
+
+Each annotation is anchored to the file and line of the TODO, with the keyword used as the annotation title. Regular human-readable output is still printed, and the spinner is suppressed to keep Actions logs clean.
+
+Workflow commands are only emitted in the default mode. The machine-readable modes `--count` and `--name-only` keep their plain output unchanged so that `count=$(gh pr-todo --count)` and similar shell pipelines stay reliable in Actions.
 
 ### Example Output
 

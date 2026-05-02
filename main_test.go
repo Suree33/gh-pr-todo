@@ -193,7 +193,7 @@ func TestRunMain(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var gotErr error
 			out, stdout, gotStderr := captureAll(t, func() {
-				_, gotErr = runMain(tt.fetcher, "o/r", "1", tt.groupBy)
+				_, gotErr = runMain(tt.fetcher, "o/r", "1", tt.groupBy, false)
 			})
 
 			if tt.wantErr != "" {
@@ -349,6 +349,7 @@ func TestIsCI(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("GITHUB_ACTIONS", "")
 			if tt.set {
 				t.Setenv("CI", tt.value)
 			} else {
@@ -362,6 +363,117 @@ func TestIsCI(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIsCIPromotedByGitHubActions(t *testing.T) {
+	tests := []struct {
+		name        string
+		ci          string
+		ciSet       bool
+		githubValue string
+		want        bool
+	}{
+		{name: "GITHUB_ACTIONS=true forces CI true even when CI unset", ciSet: false, githubValue: "true", want: true},
+		{name: "GITHUB_ACTIONS=true forces CI true even when CI=false", ci: "false", ciSet: true, githubValue: "true", want: true},
+		{name: "GITHUB_ACTIONS=1 forces CI true even when CI=0", ci: "0", ciSet: true, githubValue: "1", want: true},
+		{name: "GITHUB_ACTIONS=false does not force CI true", ci: "false", ciSet: true, githubValue: "false", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.ciSet {
+				t.Setenv("CI", tt.ci)
+			} else {
+				if err := os.Unsetenv("CI"); err != nil {
+					t.Fatalf("os.Unsetenv() error = %v", err)
+				}
+				t.Cleanup(func() { _ = os.Unsetenv("CI") })
+			}
+			t.Setenv("GITHUB_ACTIONS", tt.githubValue)
+			if got := isCI(); got != tt.want {
+				t.Fatalf("isCI() = %v, expected %v (CI set=%v value=%q, GITHUB_ACTIONS=%q)", got, tt.want, tt.ciSet, tt.ci, tt.githubValue)
+			}
+		})
+	}
+}
+
+func TestIsGitHubActions(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		set   bool
+		want  bool
+	}{
+		{name: "unset returns false", set: false, want: false},
+		{name: "empty returns false", value: "", set: true, want: false},
+		{name: "GITHUB_ACTIONS=true returns true", value: "true", set: true, want: true},
+		{name: "GITHUB_ACTIONS=1 returns true", value: "1", set: true, want: true},
+		{name: "GITHUB_ACTIONS=false returns false", value: "false", set: true, want: false},
+		{name: "GITHUB_ACTIONS=0 returns false", value: "0", set: true, want: false},
+		{name: "GITHUB_ACTIONS surrounded by whitespace returns true", value: "  true  ", set: true, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.set {
+				t.Setenv("GITHUB_ACTIONS", tt.value)
+			} else {
+				if err := os.Unsetenv("GITHUB_ACTIONS"); err != nil {
+					t.Fatalf("os.Unsetenv() error = %v", err)
+				}
+				t.Cleanup(func() { _ = os.Unsetenv("GITHUB_ACTIONS") })
+			}
+			if got := isGitHubActions(); got != tt.want {
+				t.Fatalf("isGitHubActions() = %v, expected %v (GITHUB_ACTIONS set=%v value=%q)", got, tt.want, tt.set, tt.value)
+			}
+		})
+	}
+}
+
+func TestRunFunctionsEmitWorkflowCommands(t *testing.T) {
+	fetcher := &stubFetcher{
+		diff:  sampleDiff,
+		files: map[string][]byte{"foo.go": []byte("package foo\n// TODO: add bar\n")},
+	}
+	wantLine := "::notice file=foo.go,line=2,title=TODO::// TODO: add bar"
+
+	t.Run("runMain emits when gha=true", func(t *testing.T) {
+		out, _, _ := captureAll(t, func() {
+			_, _ = runMain(fetcher, "o/r", "1", types.GroupByNone, true)
+		})
+		if !strings.Contains(out, wantLine) {
+			t.Fatalf("runMain(gha=true) output = %q, expected to contain %q", out, wantLine)
+		}
+	})
+
+	t.Run("runMain does not emit when gha=false", func(t *testing.T) {
+		out, _, _ := captureAll(t, func() {
+			_, _ = runMain(fetcher, "o/r", "1", types.GroupByNone, false)
+		})
+		if strings.Contains(out, "::notice ") || strings.Contains(out, "::warning ") {
+			t.Fatalf("runMain(gha=false) unexpectedly emitted workflow command: %q", out)
+		}
+	})
+
+	t.Run("runCount stdout stays plain", func(t *testing.T) {
+		t.Setenv("GITHUB_ACTIONS", "true")
+		out, _, _ := captureAll(t, func() {
+			_, _ = runCount(fetcher, "o/r", "1")
+		})
+		if strings.Contains(out, "::notice") || strings.Contains(out, "::warning") {
+			t.Fatalf("runCount must not emit workflow commands; got %q", out)
+		}
+	})
+
+	t.Run("runNameOnly stdout stays plain", func(t *testing.T) {
+		t.Setenv("GITHUB_ACTIONS", "true")
+		out, _, _ := captureAll(t, func() {
+			_, _ = runNameOnly(fetcher, "o/r", "1")
+		})
+		if strings.Contains(out, "::notice") || strings.Contains(out, "::warning") {
+			t.Fatalf("runNameOnly must not emit workflow commands; got %q", out)
+		}
+	})
 }
 
 func TestExitCode(t *testing.T) {
@@ -436,7 +548,7 @@ index 0000000..1111111 100644
 			var gotCount int
 			var gotErr error
 			_, _, _ = captureAll(t, func() {
-				gotCount, gotErr = runMain(tt.fetcher, "o/r", "1", types.GroupByNone)
+				gotCount, gotErr = runMain(tt.fetcher, "o/r", "1", types.GroupByNone, false)
 			})
 			if gotErr != nil {
 				t.Fatalf("runMain() unexpected error = %v", gotErr)
@@ -482,7 +594,7 @@ func TestRunFunctionsReturnZeroCountOnError(t *testing.T) {
 		var gotCount int
 		var gotErr error
 		_, _, _ = captureAll(t, func() {
-			gotCount, gotErr = runMain(fetcher, "", "", types.GroupByNone)
+			gotCount, gotErr = runMain(fetcher, "", "", types.GroupByNone, false)
 		})
 		if gotErr == nil {
 			t.Fatalf("runMain() expected error, got nil")
@@ -570,6 +682,7 @@ func TestPrintUsage(t *testing.T) {
 		"--no-ci-fail",
 		"ENVIRONMENT",
 		"CI",
+		"GITHUB_ACTIONS",
 	}
 	for _, want := range wantContain {
 		if !strings.Contains(out, want) {

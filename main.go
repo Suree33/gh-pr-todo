@@ -57,6 +57,7 @@ func main() {
 	}
 
 	fetcher := ghclient.NewClient()
+	gha := isGitHubActions()
 	var (
 		err   error
 		count int
@@ -67,7 +68,7 @@ func main() {
 	case isCount:
 		count, err = runCount(fetcher, repo, pr)
 	default:
-		count, err = runMain(fetcher, repo, pr, groupBy)
+		count, err = runMain(fetcher, repo, pr, groupBy, gha)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -86,7 +87,16 @@ func exitCode(err error, count int, ci, noCIFail bool) int {
 }
 
 func isCI() bool {
+	if isGitHubActions() {
+		return true
+	}
 	v := strings.TrimSpace(os.Getenv("CI"))
+	ok, err := strconv.ParseBool(v)
+	return err == nil && ok
+}
+
+func isGitHubActions() bool {
+	v := strings.TrimSpace(os.Getenv("GITHUB_ACTIONS"))
 	ok, err := strconv.ParseBool(v)
 	return err == nil && ok
 }
@@ -115,18 +125,26 @@ func printUsage() {
 	})
 	fmt.Fprintln(color.Output)
 	fmt.Fprintf(color.Output, "%s\n", output.Bold("ENVIRONMENT"))
-	fmt.Fprintf(color.Output, "  %s\n", "CI  When truthy (e.g. \"1\", \"true\"), exits non-zero if any TODO is found.")
-	fmt.Fprintf(color.Output, "  %s\n\n", "    Override with --no-ci-fail.")
+	fmt.Fprintf(color.Output, "  %s\n", "CI               When truthy (e.g. \"1\", \"true\"), exits non-zero if any TODO is found.")
+	fmt.Fprintf(color.Output, "  %s\n", "                 Override with --no-ci-fail.")
+	fmt.Fprintf(color.Output, "  %s\n", "GITHUB_ACTIONS   When truthy, emits GitHub Actions workflow commands so each TODO appears as an annotation.")
+	fmt.Fprintf(color.Output, "  %s\n", "                 Only emitted in the default mode; --count and --name-only stay machine-readable.")
+	fmt.Fprintf(color.Output, "  %s\n\n", "                 Implies CI=true, so --no-ci-fail is required to suppress the non-zero exit.")
 }
 
-func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy) (int, error) {
-	sp := spinner.New(spinner.CharSets[14], 40*time.Millisecond)
+func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy, gha bool) (int, error) {
 	fetchingMsg := " Fetching PR diff..."
-	sp.Suffix = fetchingMsg
-	sp.Start()
+	var sp *spinner.Spinner
+	if !gha {
+		sp = spinner.New(spinner.CharSets[14], 40*time.Millisecond)
+		sp.Suffix = fetchingMsg
+		sp.Start()
+	}
 
 	todos, err := ghclient.CollectTODOs(fetcher, repo, pr)
-	sp.Stop()
+	if sp != nil {
+		sp.Stop()
+	}
 
 	if err != nil {
 		fmt.Fprintf(color.Output, "%s%s\n", output.Red("✗"), fetchingMsg)
@@ -141,6 +159,9 @@ func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy)
 
 	fmt.Fprintf(color.Output, output.Bold("\nFound %d TODO comment(s)\n\n"), len(todos))
 	output.PrintTODOs(todos, groupBy)
+	if gha {
+		output.PrintWorkflowCommands(todos)
+	}
 	return len(todos), nil
 }
 

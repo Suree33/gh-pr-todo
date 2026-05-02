@@ -87,6 +87,15 @@ Pass `--no-ci-fail` to keep the informational behavior even in CI:
 gh pr-todo --count --no-ci-fail
 ```
 
+### GitHub Actions Annotations
+
+When `GITHUB_ACTIONS=true` (set automatically by the GitHub Actions runner), `gh pr-todo` additionally emits [workflow commands](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands) so each TODO appears as an annotation on the workflow run and pull request:
+
+- `TODO`, `NOTE` → `::notice` annotations
+- `FIXME`, `HACK`, `XXX`, `BUG` → `::warning` annotations
+
+Each annotation is anchored to the file and line of the TODO, with the keyword used as the annotation title. Regular human-readable output is still printed.
+
 ### Example Output
 
 ```

@@ -57,17 +57,18 @@ func main() {
 	}
 
 	fetcher := ghclient.NewClient()
+	gha := isGitHubActions()
 	var (
 		err   error
 		count int
 	)
 	switch {
 	case nameOnly:
-		count, err = runNameOnly(fetcher, repo, pr)
+		count, err = runNameOnly(fetcher, repo, pr, gha)
 	case isCount:
-		count, err = runCount(fetcher, repo, pr)
+		count, err = runCount(fetcher, repo, pr, gha)
 	default:
-		count, err = runMain(fetcher, repo, pr, groupBy)
+		count, err = runMain(fetcher, repo, pr, groupBy, gha)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -87,6 +88,12 @@ func exitCode(err error, count int, ci, noCIFail bool) int {
 
 func isCI() bool {
 	v := strings.TrimSpace(os.Getenv("CI"))
+	ok, err := strconv.ParseBool(v)
+	return err == nil && ok
+}
+
+func isGitHubActions() bool {
+	v := strings.TrimSpace(os.Getenv("GITHUB_ACTIONS"))
 	ok, err := strconv.ParseBool(v)
 	return err == nil && ok
 }
@@ -115,11 +122,12 @@ func printUsage() {
 	})
 	fmt.Fprintln(color.Output)
 	fmt.Fprintf(color.Output, "%s\n", output.Bold("ENVIRONMENT"))
-	fmt.Fprintf(color.Output, "  %s\n", "CI  When truthy (e.g. \"1\", \"true\"), exits non-zero if any TODO is found.")
-	fmt.Fprintf(color.Output, "  %s\n\n", "    Override with --no-ci-fail.")
+	fmt.Fprintf(color.Output, "  %s\n", "CI               When truthy (e.g. \"1\", \"true\"), exits non-zero if any TODO is found.")
+	fmt.Fprintf(color.Output, "  %s\n", "                 Override with --no-ci-fail.")
+	fmt.Fprintf(color.Output, "  %s\n\n", "GITHUB_ACTIONS   When truthy, also emits GitHub Actions workflow commands so each TODO appears as an annotation.")
 }
 
-func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy) (int, error) {
+func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy, gha bool) (int, error) {
 	sp := spinner.New(spinner.CharSets[14], 40*time.Millisecond)
 	fetchingMsg := " Fetching PR diff..."
 	sp.Suffix = fetchingMsg
@@ -141,23 +149,32 @@ func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy)
 
 	fmt.Fprintf(color.Output, output.Bold("\nFound %d TODO comment(s)\n\n"), len(todos))
 	output.PrintTODOs(todos, groupBy)
+	if gha {
+		output.PrintWorkflowCommands(todos)
+	}
 	return len(todos), nil
 }
 
-func runCount(fetcher ghclient.PRFetcher, repo, pr string) (int, error) {
+func runCount(fetcher ghclient.PRFetcher, repo, pr string, gha bool) (int, error) {
 	todos, err := ghclient.CollectTODOs(fetcher, repo, pr)
 	if err != nil {
 		return 0, err
 	}
 	output.PrintCount(todos)
+	if gha {
+		output.PrintWorkflowCommands(todos)
+	}
 	return len(todos), nil
 }
 
-func runNameOnly(fetcher ghclient.PRFetcher, repo, pr string) (int, error) {
+func runNameOnly(fetcher ghclient.PRFetcher, repo, pr string, gha bool) (int, error) {
 	todos, err := ghclient.CollectTODOs(fetcher, repo, pr)
 	if err != nil {
 		return 0, err
 	}
 	output.PrintFileNames(todos)
+	if gha {
+		output.PrintWorkflowCommands(todos)
+	}
 	return len(todos), nil
 }

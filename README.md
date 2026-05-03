@@ -62,6 +62,10 @@ gh pr-todo -c
 
 # Group TODO comments by file (or type)
 gh pr-todo --group-by file
+
+# Override severities for one or more TODO types
+# Format: --severity LEVEL=TYPE[,TYPE...]
+gh pr-todo --severity warning=TODO,HACK --severity error=FIXME
 ```
 
 ### Command Options
@@ -71,12 +75,13 @@ gh pr-todo --group-by file
 - `--group-by`: Group TODO comments by `file` or `type`
 - `--name-only`: Display only names of the files containing TODO comments
 - `-c, --count`: Display only the number of TODO comments
+- `--severity LEVEL=TYPE[,TYPE...]`: Override severity for one or more TODO types; repeatable, whitespace-tolerant, and last assignment wins for duplicate types
 - `-h, --help`: Display help information
 - `--no-ci-fail`: Disable non-zero exit when error-level TODOs are found in CI (see below)
 
 ### CI Mode
 
-When the `CI` environment variable is truthy (e.g. `1`, `true`, parsed via Go's `strconv.ParseBool`), `gh pr-todo` exits with status `1` if any **error-level** TODO-style comments are detected in the PR diff. By default, no built-in keyword type is mapped to error-level, so `gh pr-todo` does **not** fail CI based on default keywords alone. Users can configure custom type-to-severity mappings in future releases to introduce error-level types. `GITHUB_ACTIONS=true` (set by the GitHub Actions runner) is treated as `CI=true` even when `CI` is missing or falsy.
+When the `CI` environment variable is truthy (e.g. `1`, `true`, parsed via Go's `strconv.ParseBool`), `gh pr-todo` exits with status `1` if any **error-level** TODO-style comments are detected in the PR diff. By default, no built-in keyword type is mapped to error-level, so `gh pr-todo` does **not** fail CI based on default keywords alone. Use `--severity` to promote any built-in or custom type to `error` when you want CI failures, for example `--severity error=FIXME`. `GITHUB_ACTIONS=true` (set by the GitHub Actions runner) is treated as `CI=true` even when `CI` is missing or falsy.
 
 ```yaml
 # GitHub Actions example — CI=true is set automatically
@@ -86,17 +91,24 @@ When the `CI` environment variable is truthy (e.g. `1`, `true`, parsed via Go's 
 Pass `--no-ci-fail` to suppress non-zero exit even when error-level TODOs exist:
 
 ```bash
-gh pr-todo --count --no-ci-fail
+gh pr-todo --count --severity error=FIXME --no-ci-fail
 ```
 
 ### GitHub Actions Annotations
 
 When `GITHUB_ACTIONS=true` (set automatically by the GitHub Actions runner), `gh pr-todo` additionally emits [workflow commands](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands) so each TODO appears as an annotation on the workflow run and pull request:
 
+Default annotation severities:
+
 - `TODO`, `NOTE` → `::notice` annotations
 - `FIXME`, `HACK`, `XXX`, `BUG` → `::warning` annotations
 
-Annotations reflect the severity of each keyword and are independent of CI exit behavior: warning annotations are displayed but do **not** cause a non-zero exit by default. Only error-level TODOs (none by default) cause CI failure.
+You can override them with `--severity`, for example:
+
+- `--severity warning=TODO,NOTE`
+- `--severity error=FIXME`
+
+Annotations reflect the resolved severity of each keyword and are independent of CI exit behavior: warning annotations are displayed but do **not** cause a non-zero exit by default. Only error-level TODOs cause CI failure.
 
 Each annotation is anchored to the file and line of the TODO, with the keyword used as the annotation title. Regular human-readable output is still printed, and the spinner is suppressed to keep Actions logs clean.
 

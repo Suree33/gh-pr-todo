@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Suree33/gh-pr-todo/internal/todotype"
 	"github.com/Suree33/gh-pr-todo/pkg/types"
 	"github.com/fatih/color"
 	"github.com/spf13/pflag"
@@ -203,7 +204,7 @@ func TestRunMain(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var gotErr error
 			out, stdout, gotStderr := captureAll(t, func() {
-				_, gotErr = runMain(tt.fetcher, "o/r", "1", tt.groupBy, false)
+				_, gotErr = runMain(tt.fetcher, "o/r", "1", tt.groupBy, false, todotype.DefaultPolicy())
 			})
 
 			if tt.wantErr != "" {
@@ -249,7 +250,7 @@ func TestRunCount(t *testing.T) {
 		fetcher := &stubFetcher{diffErr: errors.New("boom")}
 		var err error
 		out, stdout, stderr := captureAll(t, func() {
-			_, err = runCount(fetcher, "", "")
+			_, err = runCount(fetcher, "", "", todotype.DefaultPolicy())
 		})
 		if err == nil || err.Error() != "boom" {
 			t.Fatalf("runCount() error = %v, expected boom", err)
@@ -267,7 +268,7 @@ func TestRunCount(t *testing.T) {
 		}
 		var err error
 		out, stdout, stderr := captureAll(t, func() {
-			_, err = runCount(fetcher, "o/r", "1")
+			_, err = runCount(fetcher, "o/r", "1", todotype.DefaultPolicy())
 		})
 		if err != nil {
 			t.Fatalf("runCount() unexpected error = %v", err)
@@ -287,7 +288,7 @@ func TestRunNameOnly(t *testing.T) {
 		fetcher := &stubFetcher{diffErr: errors.New("boom")}
 		var err error
 		out, stdout, stderr := captureAll(t, func() {
-			_, err = runNameOnly(fetcher, "", "")
+			_, err = runNameOnly(fetcher, "", "", todotype.DefaultPolicy())
 		})
 		if err == nil || err.Error() != "boom" {
 			t.Fatalf("runNameOnly() error = %v, expected boom", err)
@@ -305,7 +306,7 @@ func TestRunNameOnly(t *testing.T) {
 		}
 		var err error
 		out, stdout, stderr := captureAll(t, func() {
-			_, err = runNameOnly(fetcher, "o/r", "1")
+			_, err = runNameOnly(fetcher, "o/r", "1", todotype.DefaultPolicy())
 		})
 		if err != nil {
 			t.Fatalf("runNameOnly() unexpected error = %v", err)
@@ -323,7 +324,7 @@ func TestRunNameOnly(t *testing.T) {
 		fetcher := &stubFetcher{diff: "", files: map[string][]byte{}}
 		var err error
 		out, stdout, stderr := captureAll(t, func() {
-			_, err = runNameOnly(fetcher, "", "")
+			_, err = runNameOnly(fetcher, "", "", todotype.DefaultPolicy())
 		})
 		if err != nil {
 			t.Fatalf("runNameOnly() unexpected error = %v", err)
@@ -449,7 +450,7 @@ func TestRunFunctionsEmitWorkflowCommands(t *testing.T) {
 
 	t.Run("runMain emits when gha=true", func(t *testing.T) {
 		out, _, _ := captureAll(t, func() {
-			_, _ = runMain(fetcher, "o/r", "1", types.GroupByNone, true)
+			_, _ = runMain(fetcher, "o/r", "1", types.GroupByNone, true, todotype.DefaultPolicy())
 		})
 		if !strings.Contains(out, wantLine) {
 			t.Fatalf("runMain(gha=true) output = %q, expected to contain %q", out, wantLine)
@@ -458,7 +459,7 @@ func TestRunFunctionsEmitWorkflowCommands(t *testing.T) {
 
 	t.Run("runMain does not emit when gha=false", func(t *testing.T) {
 		out, _, _ := captureAll(t, func() {
-			_, _ = runMain(fetcher, "o/r", "1", types.GroupByNone, false)
+			_, _ = runMain(fetcher, "o/r", "1", types.GroupByNone, false, todotype.DefaultPolicy())
 		})
 		if strings.Contains(out, "::notice ") || strings.Contains(out, "::warning ") || strings.Contains(out, "::error ") {
 			t.Fatalf("runMain(gha=false) unexpectedly emitted workflow command: %q", out)
@@ -468,7 +469,7 @@ func TestRunFunctionsEmitWorkflowCommands(t *testing.T) {
 	t.Run("runCount stdout stays plain", func(t *testing.T) {
 		t.Setenv("GITHUB_ACTIONS", "true")
 		out, _, _ := captureAll(t, func() {
-			_, _ = runCount(fetcher, "o/r", "1")
+			_, _ = runCount(fetcher, "o/r", "1", todotype.DefaultPolicy())
 		})
 		if strings.Contains(out, "::notice") || strings.Contains(out, "::warning") || strings.Contains(out, "::error") {
 			t.Fatalf("runCount must not emit workflow commands; got %q", out)
@@ -478,7 +479,7 @@ func TestRunFunctionsEmitWorkflowCommands(t *testing.T) {
 	t.Run("runNameOnly stdout stays plain", func(t *testing.T) {
 		t.Setenv("GITHUB_ACTIONS", "true")
 		out, _, _ := captureAll(t, func() {
-			_, _ = runNameOnly(fetcher, "o/r", "1")
+			_, _ = runNameOnly(fetcher, "o/r", "1", todotype.DefaultPolicy())
 		})
 		if strings.Contains(out, "::notice") || strings.Contains(out, "::warning") || strings.Contains(out, "::error") {
 			t.Fatalf("runNameOnly must not emit workflow commands; got %q", out)
@@ -572,7 +573,7 @@ index 0000000..1111111 100644
 			var result runResult
 			var gotErr error
 			_, _, _ = captureAll(t, func() {
-				result, gotErr = runMain(tt.fetcher, "o/r", "1", types.GroupByNone, false)
+				result, gotErr = runMain(tt.fetcher, "o/r", "1", types.GroupByNone, false, todotype.DefaultPolicy())
 			})
 			if gotErr != nil {
 				t.Fatalf("runMain() unexpected error = %v", gotErr)
@@ -589,7 +590,7 @@ index 0000000..1111111 100644
 			var result runResult
 			var gotErr error
 			_, _, _ = captureAll(t, func() {
-				result, gotErr = runCount(tt.fetcher, "o/r", "1")
+				result, gotErr = runCount(tt.fetcher, "o/r", "1", todotype.DefaultPolicy())
 			})
 			if gotErr != nil {
 				t.Fatalf("runCount() unexpected error = %v", gotErr)
@@ -606,7 +607,7 @@ index 0000000..1111111 100644
 			var result runResult
 			var gotErr error
 			_, _, _ = captureAll(t, func() {
-				result, gotErr = runNameOnly(tt.fetcher, "o/r", "1")
+				result, gotErr = runNameOnly(tt.fetcher, "o/r", "1", todotype.DefaultPolicy())
 			})
 			if gotErr != nil {
 				t.Fatalf("runNameOnly() unexpected error = %v", gotErr)
@@ -637,7 +638,7 @@ func TestRunFunctionsReturnZeroOnError(t *testing.T) {
 		var result runResult
 		var gotErr error
 		_, _, _ = captureAll(t, func() {
-			result, gotErr = runMain(fetcher, "", "", types.GroupByNone, false)
+			result, gotErr = runMain(fetcher, "", "", types.GroupByNone, false, todotype.DefaultPolicy())
 		})
 		if gotErr == nil {
 			t.Fatalf("runMain() expected error, got nil")
@@ -650,7 +651,7 @@ func TestRunFunctionsReturnZeroOnError(t *testing.T) {
 		var result runResult
 		var gotErr error
 		_, _, _ = captureAll(t, func() {
-			result, gotErr = runCount(fetcher, "", "")
+			result, gotErr = runCount(fetcher, "", "", todotype.DefaultPolicy())
 		})
 		if gotErr == nil {
 			t.Fatalf("runCount() expected error, got nil")
@@ -663,7 +664,7 @@ func TestRunFunctionsReturnZeroOnError(t *testing.T) {
 		var result runResult
 		var gotErr error
 		_, _, _ = captureAll(t, func() {
-			result, gotErr = runNameOnly(fetcher, "", "")
+			result, gotErr = runNameOnly(fetcher, "", "", todotype.DefaultPolicy())
 		})
 		if gotErr == nil {
 			t.Fatalf("runNameOnly() expected error, got nil")
@@ -684,6 +685,7 @@ func TestPrintUsage(t *testing.T) {
 		isHelp   bool
 		noCIFail bool
 		groupBy  = types.GroupByNone
+		sevFlag  = newSeverityFlag()
 	)
 	pflag.StringVarP(&repo, "repo", "R", "", "Select another repository using the [HOST/]OWNER/REPO format")
 	pflag.BoolVar(&nameOnly, "name-only", false, "Display only names of the files containing TODO comments")
@@ -691,6 +693,7 @@ func TestPrintUsage(t *testing.T) {
 	pflag.BoolVarP(&isHelp, "help", "h", false, "Display help information")
 	pflag.BoolVar(&noCIFail, "no-ci-fail", false, "Disable non-zero exit when error-level TODOs are found in CI")
 	pflag.Var(&groupBy, "group-by", "Group TODO comments by: \"file\" or \"type\"")
+	pflag.Var(sevFlag, "severity", "Override severity for one or more TODO types. Format: LEVEL=TYPE[,TYPE...] (e.g. --severity warning=TODO,HACK)")
 
 	var out string
 	stdout := captureStdout(t, func() {
@@ -716,6 +719,7 @@ func TestPrintUsage(t *testing.T) {
 		"--count",
 		"--help",
 		"--group-by",
+		"--severity",
 		"--no-ci-fail",
 		"ENVIRONMENT",
 		"CI",
@@ -724,10 +728,287 @@ func TestPrintUsage(t *testing.T) {
 		"By default, no built-in",
 		"keyword maps to error-level",
 		"--no-ci-fail",
+		"SEVERITY FLAG",
+		"LEVEL=TYPE[,TYPE...]",
+		"workflow annotation levels and CI exits",
+		"warning=TODO,HACK",
 	}
 	for _, want := range wantContain {
 		if !strings.Contains(out, want) {
 			t.Fatalf("printUsage() output = %q, expected to contain %q", out, want)
 		}
 	}
+}
+
+func TestSeverityFlagInvalid(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{name: "no equals sign", value: "warning"},
+		{name: "empty level", value: "=TODO"},
+		{name: "empty types", value: "warning="},
+		{name: "empty type in list", value: "warning=TODO,"},
+		{name: "type contains equals after level separator", value: "warning==TODO"},
+		{name: "type contains equals in list", value: "warning=TODO=FIXME"},
+		{name: "invalid severity", value: "invalid=TODO"},
+		{name: "unknown level", value: "critical=TODO"},
+		{name: "just equals", value: "="},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newSeverityFlag()
+			err := s.Set(tt.value)
+			if err == nil {
+				t.Fatalf("severityFlag.Set(%q) expected error, got nil", tt.value)
+			}
+		})
+	}
+}
+
+func TestSeverityFlagParsing(t *testing.T) {
+	t.Run("single type", func(t *testing.T) {
+		s := newSeverityFlag()
+		if err := s.Set("warning=TODO"); err != nil {
+			t.Fatalf("Set(warning=TODO) unexpected error: %v", err)
+		}
+		if got := s.assignments["TODO"]; got != todotype.SeverityWarning {
+			t.Fatalf("assignments[TODO] = %q, want %q", got, todotype.SeverityWarning)
+		}
+	})
+
+	t.Run("multiple types", func(t *testing.T) {
+		s := newSeverityFlag()
+		if err := s.Set("error=FIXME,BUG"); err != nil {
+			t.Fatalf("Set(error=FIXME,BUG) unexpected error: %v", err)
+		}
+		if got := s.assignments["FIXME"]; got != todotype.SeverityError {
+			t.Fatalf("assignments[FIXME] = %q, want %q", got, todotype.SeverityError)
+		}
+		if got := s.assignments["BUG"]; got != todotype.SeverityError {
+			t.Fatalf("assignments[BUG] = %q, want %q", got, todotype.SeverityError)
+		}
+	})
+
+	t.Run("last wins across repeated flags", func(t *testing.T) {
+		s := newSeverityFlag()
+		if err := s.Set("warning=TODO"); err != nil {
+			t.Fatalf("Set(warning=TODO) unexpected error: %v", err)
+		}
+		if err := s.Set("error=TODO"); err != nil {
+			t.Fatalf("Set(error=TODO) unexpected error: %v", err)
+		}
+		if got := s.assignments["TODO"]; got != todotype.SeverityError {
+			t.Fatalf("assignments[TODO] after last-wins = %q, want %q", got, todotype.SeverityError)
+		}
+	})
+
+	t.Run("type case normalization", func(t *testing.T) {
+		s := newSeverityFlag()
+		if err := s.Set("error=fixme"); err != nil {
+			t.Fatalf("Set(error=fixme) unexpected error: %v", err)
+		}
+		if got := s.assignments["FIXME"]; got != todotype.SeverityError {
+			t.Fatalf("assignments[FIXME] = %q, want %q", got, todotype.SeverityError)
+		}
+	})
+
+	t.Run("whitespace trimming", func(t *testing.T) {
+		s := newSeverityFlag()
+		if err := s.Set("  warning  =  TODO  ,  HACK  "); err != nil {
+			t.Fatalf("Set with whitespace unexpected error: %v", err)
+		}
+		if got := s.assignments["TODO"]; got != todotype.SeverityWarning {
+			t.Fatalf("assignments[TODO] with whitespace = %q, want %q", got, todotype.SeverityWarning)
+		}
+		if got := s.assignments["HACK"]; got != todotype.SeverityWarning {
+			t.Fatalf("assignments[HACK] with whitespace = %q, want %q", got, todotype.SeverityWarning)
+		}
+	})
+
+	t.Run("custom type", func(t *testing.T) {
+		s := newSeverityFlag()
+		if err := s.Set("warning=PERF"); err != nil {
+			t.Fatalf("Set(warning=PERF) unexpected error: %v", err)
+		}
+		if got := s.assignments["PERF"]; got != todotype.SeverityWarning {
+			t.Fatalf("assignments[PERF] = %q, want %q", got, todotype.SeverityWarning)
+		}
+	})
+
+	t.Run("severity case normalization", func(t *testing.T) {
+		s := newSeverityFlag()
+		if err := s.Set("WARNING=TODO"); err != nil {
+			t.Fatalf("Set(WARNING=TODO) unexpected error: %v", err)
+		}
+		if got := s.assignments["TODO"]; got != todotype.SeverityWarning {
+			t.Fatalf("assignments[TODO] = %q, want %q", got, todotype.SeverityWarning)
+		}
+
+		s2 := newSeverityFlag()
+		if err := s2.Set("Error=BUG"); err != nil {
+			t.Fatalf("Set(Error=BUG) unexpected error: %v", err)
+		}
+		if got := s2.assignments["BUG"]; got != todotype.SeverityError {
+			t.Fatalf("assignments[BUG] = %q, want %q", got, todotype.SeverityError)
+		}
+	})
+
+	t.Run("invalid input does not mutate existing assignments", func(t *testing.T) {
+		s := newSeverityFlag()
+		if err := s.Set("warning=TODO"); err != nil {
+			t.Fatalf("Set(warning=TODO) unexpected error: %v", err)
+		}
+		if err := s.Set("error=BUG,=FIXME"); err == nil {
+			t.Fatal("Set(error=BUG,=FIXME) expected error, got nil")
+		}
+		if got := s.assignments["TODO"]; got != todotype.SeverityWarning {
+			t.Fatalf("assignments[TODO] after invalid Set = %q, want %q", got, todotype.SeverityWarning)
+		}
+		if _, ok := s.assignments["BUG"]; ok {
+			t.Fatal("assignments[BUG] was added by invalid Set; want no mutation on error")
+		}
+	})
+}
+
+func TestSeverityOverrideAffectsCIFailCount(t *testing.T) {
+	fetcher := &stubFetcher{
+		diff:  sampleDiff,
+		files: map[string][]byte{"foo.go": []byte("package foo\n// TODO: add bar\n")},
+	}
+
+	t.Run("default policy TODO is notice → no CI fail", func(t *testing.T) {
+		var result runResult
+		var err error
+		_, _, _ = captureAll(t, func() {
+			result, err = runMain(fetcher, "o/r", "1", types.GroupByNone, false, todotype.DefaultPolicy())
+		})
+		if err != nil {
+			t.Fatalf("runMain() unexpected error = %v", err)
+		}
+		if result.ciFailingCount != 0 {
+			t.Fatalf("ciFailingCount = %d, want 0", result.ciFailingCount)
+		}
+	})
+
+	t.Run("TODO overridden to error affects all run modes", func(t *testing.T) {
+		policy := todotype.DefaultPolicy().WithSeverity("TODO", todotype.SeverityError)
+
+		var result runResult
+		var err error
+		_, _, _ = captureAll(t, func() {
+			result, err = runMain(fetcher, "o/r", "1", types.GroupByNone, false, policy)
+		})
+		if err != nil {
+			t.Fatalf("runMain() unexpected error = %v", err)
+		}
+		if result.ciFailingCount != 1 {
+			t.Fatalf("runMain() ciFailingCount = %d, want 1 (TODO overridden to error)", result.ciFailingCount)
+		}
+		if result.totalCount != 1 {
+			t.Fatalf("runMain() totalCount = %d, want 1", result.totalCount)
+		}
+
+		var countResult runResult
+		countOut, countStdout, countStderr := captureAll(t, func() {
+			countResult, err = runCount(fetcher, "o/r", "1", policy)
+		})
+		if err != nil {
+			t.Fatalf("runCount() unexpected error = %v", err)
+		}
+		assertSilentChannels(t, "runCount()", countStdout, countStderr)
+		if strings.TrimSpace(countOut) != "1" {
+			t.Fatalf("runCount() output = %q, want %q", countOut, "1")
+		}
+		if countResult.ciFailingCount != 1 {
+			t.Fatalf("runCount() ciFailingCount = %d, want 1 (TODO overridden to error)", countResult.ciFailingCount)
+		}
+
+		var nameOnlyResult runResult
+		nameOnlyOut, nameOnlyStdout, nameOnlyStderr := captureAll(t, func() {
+			nameOnlyResult, err = runNameOnly(fetcher, "o/r", "1", policy)
+		})
+		if err != nil {
+			t.Fatalf("runNameOnly() unexpected error = %v", err)
+		}
+		assertSilentChannels(t, "runNameOnly()", nameOnlyStdout, nameOnlyStderr)
+		if strings.TrimSpace(nameOnlyOut) != "foo.go" {
+			t.Fatalf("runNameOnly() output = %q, want %q", nameOnlyOut, "foo.go")
+		}
+		if nameOnlyResult.ciFailingCount != 1 {
+			t.Fatalf("runNameOnly() ciFailingCount = %d, want 1 (TODO overridden to error)", nameOnlyResult.ciFailingCount)
+		}
+	})
+
+	t.Run("TODO overridden to warning → no CI fail (warning is not error)", func(t *testing.T) {
+		policy := todotype.DefaultPolicy().WithSeverity("TODO", todotype.SeverityWarning)
+		var result runResult
+		var err error
+		_, _, _ = captureAll(t, func() {
+			result, err = runMain(fetcher, "o/r", "1", types.GroupByNone, false, policy)
+		})
+		if err != nil {
+			t.Fatalf("runMain() unexpected error = %v", err)
+		}
+		if result.ciFailingCount != 0 {
+			t.Fatalf("ciFailingCount = %d, want 0 (warning should not fail CI)", result.ciFailingCount)
+		}
+	})
+
+	t.Run("NOTE overridden to error → CI fail count is 1", func(t *testing.T) {
+		// NOTE is normally notice-level; override to error to trigger CI fail.
+		fetcher := &stubFetcher{
+			diff:  noteOnlyDiff,
+			files: map[string][]byte{"note.go": []byte("package note\n// NOTE: important note\n")},
+		}
+
+		policy := todotype.DefaultPolicy().WithSeverity("NOTE", todotype.SeverityError)
+		var result runResult
+		var err error
+		_, _, _ = captureAll(t, func() {
+			result, err = runMain(fetcher, "o/r", "1", types.GroupByNone, false, policy)
+		})
+		if err != nil {
+			t.Fatalf("runMain() unexpected error = %v", err)
+		}
+		if result.ciFailingCount != 1 {
+			t.Fatalf("ciFailingCount = %d, want 1 (NOTE overridden to error)", result.ciFailingCount)
+		}
+		if result.totalCount != 1 {
+			t.Fatalf("totalCount = %d, want 1", result.totalCount)
+		}
+	})
+}
+
+func TestSeverityOverrideAffectsWorkflowAnnotation(t *testing.T) {
+	fetcher := &stubFetcher{
+		diff:  sampleDiff,
+		files: map[string][]byte{"foo.go": []byte("package foo\n// TODO: add bar\n")},
+	}
+
+	t.Run("TODO overridden to warning → ::warning annotation", func(t *testing.T) {
+		policy := todotype.DefaultPolicy().WithSeverity("TODO", todotype.SeverityWarning)
+		out, _, _ := captureAll(t, func() {
+			_, _ = runMain(fetcher, "o/r", "1", types.GroupByNone, true, policy)
+		})
+		wantLine := "::warning file=foo.go,line=2,title=TODO::// TODO: add bar"
+		if !strings.Contains(out, wantLine) {
+			t.Fatalf("runMain output = %q, expected to contain %q", out, wantLine)
+		}
+		if strings.Contains(out, "::notice ") {
+			t.Fatalf("runMain output should not contain ::notice with warning override: %q", out)
+		}
+	})
+
+	t.Run("TODO overridden to error → ::error annotation", func(t *testing.T) {
+		policy := todotype.DefaultPolicy().WithSeverity("TODO", todotype.SeverityError)
+		out, _, _ := captureAll(t, func() {
+			_, _ = runMain(fetcher, "o/r", "1", types.GroupByNone, true, policy)
+		})
+		wantLine := "::error file=foo.go,line=2,title=TODO::// TODO: add bar"
+		if !strings.Contains(out, wantLine) {
+			t.Fatalf("runMain output = %q, expected to contain %q", out, wantLine)
+		}
+	})
 }

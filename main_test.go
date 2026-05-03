@@ -518,6 +518,18 @@ index 0000000..1111111 100644
 		"foo.go": []byte("package foo\n// TODO: add bar\n// FIXME: fix baz\n"),
 	}
 
+	noteOnlyDiff := `diff --git a/foo.go b/foo.go
+index 0000000..1111111 100644
+--- a/foo.go
++++ b/foo.go
+@@ -1,1 +1,2 @@
+ package foo
++// NOTE: just a note
+`
+	noteOnlyFiles := map[string][]byte{
+		"foo.go": []byte("package foo\n// NOTE: just a note\n"),
+	}
+
 	tests := []struct {
 		name      string
 		fetcher   *stubFetcher
@@ -529,17 +541,22 @@ index 0000000..1111111 100644
 			wantCount: 0,
 		},
 		{
-			name: "one TODO returns 1",
+			name: "notice-only TODO does not fail CI",
 			fetcher: &stubFetcher{
 				diff:  sampleDiff,
 				files: map[string][]byte{"foo.go": []byte("package foo\n// TODO: add bar\n")},
 			},
-			wantCount: 1,
+			wantCount: 0,
 		},
 		{
-			name:      "two TODOs returns 2",
+			name:      "NOTE-only does not fail CI",
+			fetcher:   &stubFetcher{diff: noteOnlyDiff, files: noteOnlyFiles},
+			wantCount: 0,
+		},
+		{
+			name:      "FIXME among TODOs counts as ci-failing",
 			fetcher:   &stubFetcher{diff: twoTODOsDiff, files: twoTODOsFiles},
-			wantCount: 2,
+			wantCount: 1,
 		},
 	}
 

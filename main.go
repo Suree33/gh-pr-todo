@@ -125,7 +125,9 @@ func printUsage() {
 	})
 	fmt.Fprintln(color.Output)
 	fmt.Fprintf(color.Output, "%s\n", output.Bold("ENVIRONMENT"))
-	fmt.Fprintf(color.Output, "  %s\n", "CI               When truthy (e.g. \"1\", \"true\"), exits non-zero if any TODO is found.")
+	fmt.Fprintf(color.Output, "  %s\n", "CI               When truthy (e.g. \"1\", \"true\"), exits non-zero if any warning-level TODO")
+	fmt.Fprintf(color.Output, "  %s\n", "                 (FIXME, HACK, XXX, BUG) is found. Notice-level types (TODO, NOTE, ...) do not")
+	fmt.Fprintf(color.Output, "  %s\n", "                 trigger a failure, matching the GitHub Actions workflow command severity.")
 	fmt.Fprintf(color.Output, "  %s\n", "                 Override with --no-ci-fail.")
 	fmt.Fprintf(color.Output, "  %s\n", "GITHUB_ACTIONS   When truthy, emits GitHub Actions workflow commands so each TODO appears as an annotation.")
 	fmt.Fprintf(color.Output, "  %s\n", "                 Only emitted in the default mode; --count and --name-only stay machine-readable.")
@@ -162,7 +164,7 @@ func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy,
 	if gha {
 		output.PrintWorkflowCommands(todos)
 	}
-	return len(todos), nil
+	return output.CountCIFailing(todos), nil
 }
 
 func runCount(fetcher ghclient.PRFetcher, repo, pr string) (int, error) {
@@ -171,7 +173,7 @@ func runCount(fetcher ghclient.PRFetcher, repo, pr string) (int, error) {
 		return 0, err
 	}
 	output.PrintCount(todos)
-	return len(todos), nil
+	return output.CountCIFailing(todos), nil
 }
 
 func runNameOnly(fetcher ghclient.PRFetcher, repo, pr string) (int, error) {
@@ -180,5 +182,5 @@ func runNameOnly(fetcher ghclient.PRFetcher, repo, pr string) (int, error) {
 		return 0, err
 	}
 	output.PrintFileNames(todos)
-	return len(todos), nil
+	return output.CountCIFailing(todos), nil
 }

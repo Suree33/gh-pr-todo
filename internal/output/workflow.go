@@ -33,6 +33,25 @@ func workflowCommandFor(todoType string) string {
 	}
 }
 
+// IsCIFailing reports whether a TODO of the given type should cause a
+// non-zero exit in CI. It mirrors the severity used in GitHub Actions
+// workflow commands: warning-level types fail, notice-level types do not.
+func IsCIFailing(todoType string) bool {
+	return workflowCommandFor(todoType) == "warning"
+}
+
+// CountCIFailing returns the number of TODOs whose type maps to a
+// warning-level workflow command.
+func CountCIFailing(todos []types.TODO) int {
+	n := 0
+	for _, t := range todos {
+		if IsCIFailing(t.Type) {
+			n++
+		}
+	}
+	return n
+}
+
 func escapeWorkflowMessage(s string) string {
 	s = strings.ReplaceAll(s, "%", "%25")
 	s = strings.ReplaceAll(s, "\r", "%0D")

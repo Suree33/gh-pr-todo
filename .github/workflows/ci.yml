@@ -80,3 +80,23 @@ jobs:
 
       - name: Actionlint
         run: docker run --rm -v "$(pwd):$(pwd)" -w "$(pwd)" rhysd/actionlint:latest -color
+
+  pr-todo:
+    name: PR TODO Check
+    if: github.event_name == 'pull_request'
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Install gh-pr-todo extension
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh extension install Suree33/gh-pr-todo
+
+      - name: Run gh-pr-todo
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr-todo -R "${GITHUB_REPOSITORY}" "${{ github.event.pull_request.number }}"

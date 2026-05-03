@@ -728,7 +728,7 @@ func TestPrintUsage(t *testing.T) {
 		"By default, no built-in",
 		"keyword maps to error-level",
 		"--no-ci-fail",
-		"SEVERITY FLAG",
+		"SEVERITY OVERRIDES",
 		"LEVEL=TYPE[,TYPE...]",
 		"workflow annotation levels and CI exits",
 		"warning=TODO,HACK",

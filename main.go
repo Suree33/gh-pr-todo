@@ -226,10 +226,11 @@ func printUsage() {
 	fmt.Fprintf(color.Output, "  %s\n", "                 Use --no-ci-fail to disable even if error-level types exist.")
 	fmt.Fprintf(color.Output, "  %s\n", "GITHUB_ACTIONS   When truthy, emits GitHub Actions workflow annotations.")
 	fmt.Fprintf(color.Output, "  %s\n", "                 Implies CI=true; --no-ci-fail suppresses error-level exits.")
-	fmt.Fprintf(color.Output, "  %s\n", "                 Only emitted in the default mode; --count and --name-only stay machine-readable.")
-	fmt.Fprintf(color.Output, "  %s\n", "SEVERITY FLAG    Use --severity LEVEL=TYPE[,TYPE...] to override severities.")
-	fmt.Fprintf(color.Output, "  %s\n", "                 Affects workflow annotation levels and CI exits for error-level types.")
-	fmt.Fprintf(color.Output, "  %s\n\n", "                 Example: --severity warning=TODO,HACK --severity error=FIXME")
+	fmt.Fprintf(color.Output, "  %s\n\n", "                 Only emitted in the default mode; --count and --name-only stay machine-readable.")
+	fmt.Fprintf(color.Output, "%s\n", output.Bold("SEVERITY OVERRIDES"))
+	fmt.Fprintf(color.Output, "  %s\n", "Use --severity LEVEL=TYPE[,TYPE...] to override severities.")
+	fmt.Fprintf(color.Output, "  %s\n", "Affects workflow annotation levels and CI exits for error-level types.")
+	fmt.Fprintf(color.Output, "  %s\n\n", "Example: --severity warning=TODO,HACK --severity error=FIXME")
 }
 
 func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy, gha bool, policy todotype.Policy) (runResult, error) {

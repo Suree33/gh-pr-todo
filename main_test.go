@@ -669,7 +669,7 @@ func TestPrintUsage(t *testing.T) {
 	pflag.BoolVar(&nameOnly, "name-only", false, "Display only names of the files containing TODO comments")
 	pflag.BoolVarP(&isCount, "count", "c", false, "Display only the number of TODO comments")
 	pflag.BoolVarP(&isHelp, "help", "h", false, "Display help information")
-	pflag.BoolVar(&noCIFail, "no-ci-fail", false, "Disable non-zero exit when TODOs are found in CI")
+	pflag.BoolVar(&noCIFail, "no-ci-fail", false, "Disable non-zero exit when warning-level TODOs (FIXME, HACK, XXX, BUG) are found in CI")
 	pflag.Var(&groupBy, "group-by", "Group TODO comments by: \"file\" or \"type\"")
 
 	var out string
@@ -697,8 +697,11 @@ func TestPrintUsage(t *testing.T) {
 		"--help",
 		"--group-by",
 		"--no-ci-fail",
+		"warning-level TODOs (FIXME, HACK, XXX, BUG)",
 		"ENVIRONMENT",
 		"CI",
+		"warning-level TODO",
+		"Notice-level types (TODO, NOTE, ...) do not",
 		"GITHUB_ACTIONS",
 	}
 	for _, want := range wantContain {

@@ -108,6 +108,16 @@ index 0000000..1111111 100644
 +// TODO: add bar
 `
 
+// noteOnlyDiff is a diff with a NOTE comment (no warning-level tokens).
+const noteOnlyDiff = `diff --git a/note.go b/note.go
+index 0000000..1111111 100644
+--- a/note.go
++++ b/note.go
+@@ -1,1 +1,2 @@
+ package note
++// NOTE: test note
+`
+
 func TestRunMain(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -478,33 +488,34 @@ func TestRunFunctionsEmitWorkflowCommands(t *testing.T) {
 
 func TestExitCode(t *testing.T) {
 	tests := []struct {
-		name     string
-		err      error
-		count    int
-		ci       bool
-		noCIFail bool
-		want     int
+		name           string
+		err            error
+		ciFailingCount int
+		ci             bool
+		noCIFail       bool
+		want           int
 	}{
 		{name: "error returns 1", err: errors.New("boom"), want: 1},
-		{name: "error in CI still 1", err: errors.New("boom"), ci: true, count: 5, want: 1},
+		{name: "error in CI still 1", err: errors.New("boom"), ci: true, ciFailingCount: 5, want: 1},
 		{name: "no error no TODOs returns 0", want: 0},
-		{name: "no error TODOs not in CI returns 0", count: 3, want: 0},
-		{name: "no error TODOs in CI returns 1", count: 3, ci: true, want: 1},
-		{name: "no error TODOs in CI with no-ci-fail returns 0", count: 3, ci: true, noCIFail: true, want: 0},
-		{name: "no error zero TODOs in CI returns 0", count: 0, ci: true, want: 0},
+		{name: "no error ci-failing TODOs not in CI returns 0", ciFailingCount: 3, want: 0},
+		{name: "no error ci-failing TODOs in CI returns 1", ciFailingCount: 3, ci: true, want: 1},
+		{name: "no error notice-only TODOs in CI returns 0", ciFailingCount: 0, ci: true, want: 0},
+		{name: "no error ci-failing TODOs in CI with no-ci-fail returns 0", ciFailingCount: 3, ci: true, noCIFail: true, want: 0},
+		{name: "no error zero TODOs in CI returns 0", ciFailingCount: 0, ci: true, want: 0},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := exitCode(tt.err, tt.count, tt.ci, tt.noCIFail); got != tt.want {
-				t.Fatalf("exitCode(err=%v, count=%d, ci=%v, noCIFail=%v) = %d, expected %d",
-					tt.err, tt.count, tt.ci, tt.noCIFail, got, tt.want)
+			if got := exitCode(tt.err, tt.ciFailingCount, tt.ci, tt.noCIFail); got != tt.want {
+				t.Fatalf("exitCode(err=%v, ciFailingCount=%d, ci=%v, noCIFail=%v) = %d, expected %d",
+					tt.err, tt.ciFailingCount, tt.ci, tt.noCIFail, got, tt.want)
 			}
 		})
 	}
 }
 
-func TestRunFunctionsReturnTODOCount(t *testing.T) {
+func TestRunFunctionsReturnCIFailingCount(t *testing.T) {
 	twoTODOsDiff := `diff --git a/foo.go b/foo.go
 index 0000000..1111111 100644
 --- a/foo.go
@@ -519,119 +530,145 @@ index 0000000..1111111 100644
 	}
 
 	tests := []struct {
-		name      string
-		fetcher   *stubFetcher
-		wantCount int
+		name          string
+		fetcher       *stubFetcher
+		wantTotal     int
+		wantCIFailing int
 	}{
 		{
-			name:      "no TODOs returns 0",
-			fetcher:   &stubFetcher{diff: "", files: map[string][]byte{}},
-			wantCount: 0,
+			name:          "no TODOs returns 0",
+			fetcher:       &stubFetcher{diff: "", files: map[string][]byte{}},
+			wantTotal:     0,
+			wantCIFailing: 0,
 		},
 		{
-			name: "one TODO returns 1",
+			name: "one notice TODO returns 0",
 			fetcher: &stubFetcher{
 				diff:  sampleDiff,
 				files: map[string][]byte{"foo.go": []byte("package foo\n// TODO: add bar\n")},
 			},
-			wantCount: 1,
+			wantTotal:     1,
+			wantCIFailing: 0,
 		},
 		{
-			name:      "two TODOs returns 2",
-			fetcher:   &stubFetcher{diff: twoTODOsDiff, files: twoTODOsFiles},
-			wantCount: 2,
+			name: "notice only (NOTE) returns 0",
+			fetcher: &stubFetcher{
+				diff:  noteOnlyDiff,
+				files: map[string][]byte{"note.go": []byte("package note\n// NOTE: test note\n")},
+			},
+			wantTotal:     1,
+			wantCIFailing: 0,
+		},
+		{
+			name:          "notice and warning TODOs returns 1",
+			fetcher:       &stubFetcher{diff: twoTODOsDiff, files: twoTODOsFiles},
+			wantTotal:     2,
+			wantCIFailing: 1,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run("runMain/"+tt.name, func(t *testing.T) {
-			var gotCount int
+			var result runResult
 			var gotErr error
 			_, _, _ = captureAll(t, func() {
-				gotCount, gotErr = runMain(tt.fetcher, "o/r", "1", types.GroupByNone, false)
+				result, gotErr = runMain(tt.fetcher, "o/r", "1", types.GroupByNone, false)
 			})
 			if gotErr != nil {
 				t.Fatalf("runMain() unexpected error = %v", gotErr)
 			}
-			if gotCount != tt.wantCount {
-				t.Fatalf("runMain() count = %d, expected %d", gotCount, tt.wantCount)
+			if result.totalCount != tt.wantTotal {
+				t.Fatalf("runMain() totalCount = %d, expected %d (ciFailingCount=%d)", result.totalCount, tt.wantTotal, result.ciFailingCount)
+			}
+			if result.ciFailingCount != tt.wantCIFailing {
+				t.Fatalf("runMain() ciFailingCount = %d, expected %d", result.ciFailingCount, tt.wantCIFailing)
 			}
 		})
 
 		t.Run("runCount/"+tt.name, func(t *testing.T) {
-			var gotCount int
+			var result runResult
 			var gotErr error
 			_, _, _ = captureAll(t, func() {
-				gotCount, gotErr = runCount(tt.fetcher, "o/r", "1")
+				result, gotErr = runCount(tt.fetcher, "o/r", "1")
 			})
 			if gotErr != nil {
 				t.Fatalf("runCount() unexpected error = %v", gotErr)
 			}
-			if gotCount != tt.wantCount {
-				t.Fatalf("runCount() count = %d, expected %d", gotCount, tt.wantCount)
+			if result.totalCount != tt.wantTotal {
+				t.Fatalf("runCount() totalCount = %d, expected %d (ciFailingCount=%d)", result.totalCount, tt.wantTotal, result.ciFailingCount)
+			}
+			if result.ciFailingCount != tt.wantCIFailing {
+				t.Fatalf("runCount() ciFailingCount = %d, expected %d", result.ciFailingCount, tt.wantCIFailing)
 			}
 		})
 
 		t.Run("runNameOnly/"+tt.name, func(t *testing.T) {
-			var gotCount int
+			var result runResult
 			var gotErr error
 			_, _, _ = captureAll(t, func() {
-				gotCount, gotErr = runNameOnly(tt.fetcher, "o/r", "1")
+				result, gotErr = runNameOnly(tt.fetcher, "o/r", "1")
 			})
 			if gotErr != nil {
 				t.Fatalf("runNameOnly() unexpected error = %v", gotErr)
 			}
-			if gotCount != tt.wantCount {
-				t.Fatalf("runNameOnly() count = %d, expected %d", gotCount, tt.wantCount)
+			if result.totalCount != tt.wantTotal {
+				t.Fatalf("runNameOnly() totalCount = %d, expected %d (ciFailingCount=%d)", result.totalCount, tt.wantTotal, result.ciFailingCount)
+			}
+			if result.ciFailingCount != tt.wantCIFailing {
+				t.Fatalf("runNameOnly() ciFailingCount = %d, expected %d", result.ciFailingCount, tt.wantCIFailing)
 			}
 		})
 	}
 }
 
-func TestRunFunctionsReturnZeroCountOnError(t *testing.T) {
+func TestRunFunctionsReturnZeroOnError(t *testing.T) {
+	checkZero := func(t *testing.T, label string, result runResult) {
+		t.Helper()
+		if result.totalCount != 0 {
+			t.Fatalf("%s totalCount = %d, expected 0", label, result.totalCount)
+		}
+		if result.ciFailingCount != 0 {
+			t.Fatalf("%s ciFailingCount = %d, expected 0", label, result.ciFailingCount)
+		}
+	}
+
 	t.Run("runMain", func(t *testing.T) {
 		fetcher := &stubFetcher{diffErr: errors.New("boom")}
-		var gotCount int
+		var result runResult
 		var gotErr error
 		_, _, _ = captureAll(t, func() {
-			gotCount, gotErr = runMain(fetcher, "", "", types.GroupByNone, false)
+			result, gotErr = runMain(fetcher, "", "", types.GroupByNone, false)
 		})
 		if gotErr == nil {
 			t.Fatalf("runMain() expected error, got nil")
 		}
-		if gotCount != 0 {
-			t.Fatalf("runMain() count = %d, expected 0", gotCount)
-		}
+		checkZero(t, "runMain()", result)
 	})
 
 	t.Run("runCount", func(t *testing.T) {
 		fetcher := &stubFetcher{diffErr: errors.New("boom")}
-		var gotCount int
+		var result runResult
 		var gotErr error
 		_, _, _ = captureAll(t, func() {
-			gotCount, gotErr = runCount(fetcher, "", "")
+			result, gotErr = runCount(fetcher, "", "")
 		})
 		if gotErr == nil {
 			t.Fatalf("runCount() expected error, got nil")
 		}
-		if gotCount != 0 {
-			t.Fatalf("runCount() count = %d, expected 0", gotCount)
-		}
+		checkZero(t, "runCount()", result)
 	})
 
 	t.Run("runNameOnly", func(t *testing.T) {
 		fetcher := &stubFetcher{diffErr: errors.New("boom")}
-		var gotCount int
+		var result runResult
 		var gotErr error
 		_, _, _ = captureAll(t, func() {
-			gotCount, gotErr = runNameOnly(fetcher, "", "")
+			result, gotErr = runNameOnly(fetcher, "", "")
 		})
 		if gotErr == nil {
 			t.Fatalf("runNameOnly() expected error, got nil")
 		}
-		if gotCount != 0 {
-			t.Fatalf("runNameOnly() count = %d, expected 0", gotCount)
-		}
+		checkZero(t, "runNameOnly()", result)
 	})
 }
 
@@ -652,7 +689,7 @@ func TestPrintUsage(t *testing.T) {
 	pflag.BoolVar(&nameOnly, "name-only", false, "Display only names of the files containing TODO comments")
 	pflag.BoolVarP(&isCount, "count", "c", false, "Display only the number of TODO comments")
 	pflag.BoolVarP(&isHelp, "help", "h", false, "Display help information")
-	pflag.BoolVar(&noCIFail, "no-ci-fail", false, "Disable non-zero exit when TODOs are found in CI")
+	pflag.BoolVar(&noCIFail, "no-ci-fail", false, "Disable non-zero exit when warning-level TODOs (FIXME/HACK/XXX/BUG) are found in CI")
 	pflag.Var(&groupBy, "group-by", "Group TODO comments by: \"file\" or \"type\"")
 
 	var out string
@@ -683,6 +720,9 @@ func TestPrintUsage(t *testing.T) {
 		"ENVIRONMENT",
 		"CI",
 		"GITHUB_ACTIONS",
+		"warning-level TODO (FIXME/HACK/XXX/BUG)",
+		"Notice-only keywords (TODO, NOTE)",
+		"(FIXME/HACK/XXX/BUG) are found in CI",
 	}
 	for _, want := range wantContain {
 		if !strings.Contains(out, want) {

@@ -21,6 +21,7 @@ gh ext install Suree33/gh-pr-todo
 ```
 
 **Prerequisites:**
+
 - [GitHub CLI](https://cli.github.com/) installed and authenticated
 
 ## Usage
@@ -71,11 +72,11 @@ gh pr-todo --group-by file
 - `--name-only`: Display only names of the files containing TODO comments
 - `-c, --count`: Display only the number of TODO comments
 - `-h, --help`: Display help information
-- `--no-ci-fail`: Disable non-zero exit when TODOs are found in CI (see below)
+- `--no-ci-fail`: Disable non-zero exit when warning-level TODOs (FIXME/HACK/XXX/BUG) are found in CI (see below)
 
 ### CI Mode
 
-When the `CI` environment variable is set to a truthy value (e.g. `1`, `true`, parsed via Go's `strconv.ParseBool`), `gh pr-todo` exits with status `1` if any TODO-style comments are detected in the PR diff. This makes it easy to fail a CI job when new TODOs slip into a pull request. `GITHUB_ACTIONS=true` (set automatically by the GitHub Actions runner) is treated as `CI=true` even when the `CI` variable is missing or falsy.
+When the `CI` environment variable is truthy (e.g. `1`, `true`, parsed via Go's `strconv.ParseBool`), `gh pr-todo` exits with status `1` if any **warning-level** TODO-style comments (`FIXME`, `HACK`, `XXX`, `BUG`) are detected in the PR diff. Notice-level keywords (`TODO`, `NOTE`) do **not** cause a non-zero exit, matching the GitHub Actions annotation severity below. `GITHUB_ACTIONS=true` (set by the GitHub Actions runner) is treated as `CI=true` even when `CI` is missing or falsy.
 
 ```yaml
 # GitHub Actions example — CI=true is set automatically
@@ -120,13 +121,13 @@ Found 3 TODO comment(s)
 
 The tool recognizes TODO-style comments in various formats:
 
-| Format | Example |
-|--------|---------|
-| **C-style** | `// TODO: Fix this bug` |
-| **C-style block** | `/* HACK: Quick fix for demo */` |
-| **Shell/Python** | `# FIXME: Optimization needed` |
-| **HTML/XML** | `<!-- NOTE: Review this section -->` |
-| **Assembly/Config** | `; XXX: Temporary workaround` |
+| Format              | Example                              |
+| ------------------- | ------------------------------------ |
+| **C-style**         | `// TODO: Fix this bug`              |
+| **C-style block**   | `/* HACK: Quick fix for demo */`     |
+| **Shell/Python**    | `# FIXME: Optimization needed`       |
+| **HTML/XML**        | `<!-- NOTE: Review this section -->` |
+| **Assembly/Config** | `; XXX: Temporary workaround`        |
 
 ## Supported Keywords
 

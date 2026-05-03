@@ -28,7 +28,7 @@ func main() {
 	pflag.BoolVar(&nameOnly, "name-only", false, "Display only names of the files containing TODO comments")
 	pflag.BoolVarP(&isCount, "count", "c", false, "Display only the number of TODO comments")
 	pflag.BoolVarP(&isHelp, "help", "h", false, "Display help information")
-	pflag.BoolVar(&noCIFail, "no-ci-fail", false, "Disable non-zero exit when TODOs are found in CI")
+	pflag.BoolVar(&noCIFail, "no-ci-fail", false, "Disable non-zero exit when warning-level TODOs (FIXME, HACK, XXX, BUG) are found in CI")
 	pflag.Var(&groupBy, "group-by", "Group TODO comments by: \"file\" or \"type\"")
 	pflag.Usage = printUsage
 	pflag.Parse()
@@ -59,28 +59,28 @@ func main() {
 	fetcher := ghclient.NewClient()
 	gha := isGitHubActions()
 	var (
-		err   error
-		count int
+		err            error
+		ciFailingCount int
 	)
 	switch {
 	case nameOnly:
-		count, err = runNameOnly(fetcher, repo, pr)
+		ciFailingCount, err = runNameOnly(fetcher, repo, pr)
 	case isCount:
-		count, err = runCount(fetcher, repo, pr)
+		ciFailingCount, err = runCount(fetcher, repo, pr)
 	default:
-		count, err = runMain(fetcher, repo, pr, groupBy, gha)
+		ciFailingCount, err = runMain(fetcher, repo, pr, groupBy, gha)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 	}
-	os.Exit(exitCode(err, count, isCI(), noCIFail))
+	os.Exit(exitCode(err, ciFailingCount, isCI(), noCIFail))
 }
 
-func exitCode(err error, count int, ci, noCIFail bool) int {
+func exitCode(err error, ciFailingCount int, ci, noCIFail bool) int {
 	if err != nil {
 		return 1
 	}
-	if ci && !noCIFail && count > 0 {
+	if ci && !noCIFail && ciFailingCount > 0 {
 		return 1
 	}
 	return 0

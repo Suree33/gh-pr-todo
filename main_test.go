@@ -478,33 +478,33 @@ func TestRunFunctionsEmitWorkflowCommands(t *testing.T) {
 
 func TestExitCode(t *testing.T) {
 	tests := []struct {
-		name     string
-		err      error
-		count    int
-		ci       bool
-		noCIFail bool
-		want     int
+		name           string
+		err            error
+		ciFailingCount int
+		ci             bool
+		noCIFail       bool
+		want           int
 	}{
 		{name: "error returns 1", err: errors.New("boom"), want: 1},
-		{name: "error in CI still 1", err: errors.New("boom"), ci: true, count: 5, want: 1},
+		{name: "error in CI still 1", err: errors.New("boom"), ci: true, ciFailingCount: 5, want: 1},
 		{name: "no error no TODOs returns 0", want: 0},
-		{name: "no error TODOs not in CI returns 0", count: 3, want: 0},
-		{name: "no error TODOs in CI returns 1", count: 3, ci: true, want: 1},
-		{name: "no error TODOs in CI with no-ci-fail returns 0", count: 3, ci: true, noCIFail: true, want: 0},
-		{name: "no error zero TODOs in CI returns 0", count: 0, ci: true, want: 0},
+		{name: "no error ci-failing TODOs not in CI returns 0", ciFailingCount: 3, want: 0},
+		{name: "no error ci-failing TODOs in CI returns 1", ciFailingCount: 3, ci: true, want: 1},
+		{name: "no error ci-failing TODOs in CI with no-ci-fail returns 0", ciFailingCount: 3, ci: true, noCIFail: true, want: 0},
+		{name: "no error zero ci-failing TODOs in CI returns 0", ciFailingCount: 0, ci: true, want: 0},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := exitCode(tt.err, tt.count, tt.ci, tt.noCIFail); got != tt.want {
-				t.Fatalf("exitCode(err=%v, count=%d, ci=%v, noCIFail=%v) = %d, expected %d",
-					tt.err, tt.count, tt.ci, tt.noCIFail, got, tt.want)
+			if got := exitCode(tt.err, tt.ciFailingCount, tt.ci, tt.noCIFail); got != tt.want {
+				t.Fatalf("exitCode(err=%v, ciFailingCount=%d, ci=%v, noCIFail=%v) = %d, expected %d",
+					tt.err, tt.ciFailingCount, tt.ci, tt.noCIFail, got, tt.want)
 			}
 		})
 	}
 }
 
-func TestRunFunctionsReturnTODOCount(t *testing.T) {
+func TestRunFunctionsReturnCIFailingCount(t *testing.T) {
 	twoTODOsDiff := `diff --git a/foo.go b/foo.go
 index 0000000..1111111 100644
 --- a/foo.go

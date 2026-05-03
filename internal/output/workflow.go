@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Suree33/gh-pr-todo/internal/todotype"
 	"github.com/Suree33/gh-pr-todo/pkg/types"
 	"github.com/fatih/color"
 )
@@ -25,12 +26,10 @@ func PrintWorkflowCommands(todos []types.TODO) {
 }
 
 func workflowCommandFor(todoType string) string {
-	switch strings.ToUpper(todoType) {
-	case "FIXME", "HACK", "XXX", "BUG":
+	if todotype.SeverityFor(todoType) == todotype.SeverityWarning {
 		return "warning"
-	default:
-		return "notice"
 	}
+	return "notice"
 }
 
 func escapeWorkflowMessage(s string) string {

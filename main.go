@@ -9,6 +9,7 @@ import (
 
 	ghclient "github.com/Suree33/gh-pr-todo/internal/github"
 	"github.com/Suree33/gh-pr-todo/internal/output"
+	"github.com/Suree33/gh-pr-todo/internal/todotype"
 	"github.com/Suree33/gh-pr-todo/pkg/types"
 	"github.com/briandowns/spinner"
 	"github.com/fatih/color"
@@ -28,7 +29,7 @@ func main() {
 	pflag.BoolVar(&nameOnly, "name-only", false, "Display only names of the files containing TODO comments")
 	pflag.BoolVarP(&isCount, "count", "c", false, "Display only the number of TODO comments")
 	pflag.BoolVarP(&isHelp, "help", "h", false, "Display help information")
-	pflag.BoolVar(&noCIFail, "no-ci-fail", false, "Disable non-zero exit when TODOs are found in CI")
+	pflag.BoolVar(&noCIFail, "no-ci-fail", false, "Disable non-zero exit when warning-level TODOs (FIXME/HACK/XXX/BUG) are found in CI")
 	pflag.Var(&groupBy, "group-by", "Group TODO comments by: \"file\" or \"type\"")
 	pflag.Usage = printUsage
 	pflag.Parse()
@@ -59,28 +60,42 @@ func main() {
 	fetcher := ghclient.NewClient()
 	gha := isGitHubActions()
 	var (
-		err   error
-		count int
+		err    error
+		result runResult
 	)
 	switch {
 	case nameOnly:
-		count, err = runNameOnly(fetcher, repo, pr)
+		result, err = runNameOnly(fetcher, repo, pr)
 	case isCount:
-		count, err = runCount(fetcher, repo, pr)
+		result, err = runCount(fetcher, repo, pr)
 	default:
-		count, err = runMain(fetcher, repo, pr, groupBy, gha)
+		result, err = runMain(fetcher, repo, pr, groupBy, gha)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 	}
-	os.Exit(exitCode(err, count, isCI(), noCIFail))
+	os.Exit(exitCode(err, result.ciFailingCount, isCI(), noCIFail))
 }
 
-func exitCode(err error, count int, ci, noCIFail bool) int {
+// runResult groups the total TODO count and the CI-failing count from a run.
+type runResult struct {
+	totalCount     int
+	ciFailingCount int
+}
+
+// newRunResult computes a runResult from a TODO slice.
+func newRunResult(todos []types.TODO) runResult {
+	return runResult{
+		totalCount:     len(todos),
+		ciFailingCount: todotype.CountCIFailing(todos),
+	}
+}
+
+func exitCode(err error, ciFailingCount int, ci, noCIFail bool) int {
 	if err != nil {
 		return 1
 	}
-	if ci && !noCIFail && count > 0 {
+	if ci && !noCIFail && ciFailingCount > 0 {
 		return 1
 	}
 	return 0
@@ -125,14 +140,16 @@ func printUsage() {
 	})
 	fmt.Fprintln(color.Output)
 	fmt.Fprintf(color.Output, "%s\n", output.Bold("ENVIRONMENT"))
-	fmt.Fprintf(color.Output, "  %s\n", "CI               When truthy (e.g. \"1\", \"true\"), exits non-zero if any TODO is found.")
+	fmt.Fprintf(color.Output, "  %s\n", "CI               When truthy (e.g. \"1\", \"true\"), exits non-zero if any")
+	fmt.Fprintf(color.Output, "  %s\n", "                 warning-level TODO (FIXME/HACK/XXX/BUG) is found.")
+	fmt.Fprintf(color.Output, "  %s\n", "                 Notice-only keywords (TODO, NOTE) do not cause failures.")
 	fmt.Fprintf(color.Output, "  %s\n", "                 Override with --no-ci-fail.")
-	fmt.Fprintf(color.Output, "  %s\n", "GITHUB_ACTIONS   When truthy, emits GitHub Actions workflow commands so each TODO appears as an annotation.")
-	fmt.Fprintf(color.Output, "  %s\n", "                 Only emitted in the default mode; --count and --name-only stay machine-readable.")
-	fmt.Fprintf(color.Output, "  %s\n\n", "                 Implies CI=true, so --no-ci-fail is required to suppress the non-zero exit.")
+	fmt.Fprintf(color.Output, "  %s\n", "GITHUB_ACTIONS   When truthy, emits GitHub Actions workflow annotations.")
+	fmt.Fprintf(color.Output, "  %s\n", "                 Implies CI=true; --no-ci-fail suppresses warning-level exits.")
+	fmt.Fprintf(color.Output, "  %s\n\n", "                 Only emitted in the default mode; --count and --name-only stay machine-readable.")
 }
 
-func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy, gha bool) (int, error) {
+func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy, gha bool) (runResult, error) {
 	fetchingMsg := " Fetching PR diff..."
 	var sp *spinner.Spinner
 	if !gha {
@@ -148,13 +165,13 @@ func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy,
 
 	if err != nil {
 		fmt.Fprintf(color.Output, "%s%s\n", output.Red("✗"), fetchingMsg)
-		return 0, err
+		return runResult{}, err
 	}
 	fmt.Fprintf(color.Output, "%s%s\n", output.Green("✔"), fetchingMsg)
 
 	if len(todos) == 0 {
 		fmt.Fprintf(color.Output, "\nNo TODO comments found in the diff.\n")
-		return 0, nil
+		return runResult{}, nil
 	}
 
 	fmt.Fprintf(color.Output, output.Bold("\nFound %d TODO comment(s)\n\n"), len(todos))
@@ -162,23 +179,23 @@ func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy,
 	if gha {
 		output.PrintWorkflowCommands(todos)
 	}
-	return len(todos), nil
+	return newRunResult(todos), nil
 }
 
-func runCount(fetcher ghclient.PRFetcher, repo, pr string) (int, error) {
+func runCount(fetcher ghclient.PRFetcher, repo, pr string) (runResult, error) {
 	todos, err := ghclient.CollectTODOs(fetcher, repo, pr)
 	if err != nil {
-		return 0, err
+		return runResult{}, err
 	}
 	output.PrintCount(todos)
-	return len(todos), nil
+	return newRunResult(todos), nil
 }
 
-func runNameOnly(fetcher ghclient.PRFetcher, repo, pr string) (int, error) {
+func runNameOnly(fetcher ghclient.PRFetcher, repo, pr string) (runResult, error) {
 	todos, err := ghclient.CollectTODOs(fetcher, repo, pr)
 	if err != nil {
-		return 0, err
+		return runResult{}, err
 	}
 	output.PrintFileNames(todos)
-	return len(todos), nil
+	return newRunResult(todos), nil
 }

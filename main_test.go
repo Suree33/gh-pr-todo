@@ -657,20 +657,7 @@ func TestPrintUsage(t *testing.T) {
 	pflag.CommandLine = pflag.NewFlagSet("gh pr-todo", pflag.ContinueOnError)
 	t.Cleanup(func() { pflag.CommandLine = originalCommandLine })
 
-	var (
-		repo     string
-		nameOnly bool
-		isCount  bool
-		isHelp   bool
-		noCIFail bool
-		groupBy  = types.GroupByNone
-	)
-	pflag.StringVarP(&repo, "repo", "R", "", "Select another repository using the [HOST/]OWNER/REPO format")
-	pflag.BoolVar(&nameOnly, "name-only", false, "Display only names of the files containing TODO comments")
-	pflag.BoolVarP(&isCount, "count", "c", false, "Display only the number of TODO comments")
-	pflag.BoolVarP(&isHelp, "help", "h", false, "Display help information")
-	pflag.BoolVar(&noCIFail, "no-ci-fail", false, "Disable non-zero exit when warning-level TODOs (FIXME, HACK, XXX, BUG) are found in CI")
-	pflag.Var(&groupBy, "group-by", "Group TODO comments by: \"file\" or \"type\"")
+	_ = registerFlags(pflag.CommandLine)
 
 	var out string
 	stdout := captureStdout(t, func() {

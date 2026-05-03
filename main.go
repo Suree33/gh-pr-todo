@@ -15,26 +15,35 @@ import (
 	"github.com/spf13/pflag"
 )
 
+type cliFlags struct {
+	repo     string
+	nameOnly bool
+	count    bool
+	help     bool
+	noCIFail bool
+	groupBy  types.GroupBy
+}
+
+// registerFlags registers all CLI flags on fs and returns the bound values.
+// main() and tests share this so help/usage text never drifts between them.
+func registerFlags(fs *pflag.FlagSet) *cliFlags {
+	f := &cliFlags{groupBy: types.GroupByNone}
+	fs.StringVarP(&f.repo, "repo", "R", "", "Select another repository using the [HOST/]OWNER/REPO format")
+	fs.BoolVar(&f.nameOnly, "name-only", false, "Display only names of the files containing TODO comments")
+	fs.BoolVarP(&f.count, "count", "c", false, "Display only the number of TODO comments")
+	fs.BoolVarP(&f.help, "help", "h", false, "Display help information")
+	fs.BoolVar(&f.noCIFail, "no-ci-fail", false, "Disable non-zero exit when warning-level TODOs (FIXME, HACK, XXX, BUG) are found in CI")
+	fs.Var(&f.groupBy, "group-by", "Group TODO comments by: \"file\" or \"type\"")
+	return f
+}
+
 func main() {
-	var (
-		repo     string
-		nameOnly bool
-		isCount  bool
-		isHelp   bool
-		noCIFail bool
-		groupBy  = types.GroupByNone
-	)
-	pflag.StringVarP(&repo, "repo", "R", "", "Select another repository using the [HOST/]OWNER/REPO format")
-	pflag.BoolVar(&nameOnly, "name-only", false, "Display only names of the files containing TODO comments")
-	pflag.BoolVarP(&isCount, "count", "c", false, "Display only the number of TODO comments")
-	pflag.BoolVarP(&isHelp, "help", "h", false, "Display help information")
-	pflag.BoolVar(&noCIFail, "no-ci-fail", false, "Disable non-zero exit when warning-level TODOs (FIXME, HACK, XXX, BUG) are found in CI")
-	pflag.Var(&groupBy, "group-by", "Group TODO comments by: \"file\" or \"type\"")
+	flags := registerFlags(pflag.CommandLine)
 	pflag.Usage = printUsage
 	pflag.Parse()
 	args := pflag.Args()
 
-	if isHelp {
+	if flags.help {
 		pflag.Usage()
 		os.Exit(0)
 	}
@@ -42,7 +51,7 @@ func main() {
 	var pr string
 	switch len(args) {
 	case 0:
-		if repo != "" {
+		if flags.repo != "" {
 			fmt.Fprintf(color.Output, "%s%s\n", output.Red("✗"), " PR number, branch, or URL required when specifying repository\n")
 			pflag.Usage()
 			os.Exit(1)
@@ -63,17 +72,17 @@ func main() {
 		ciFailingCount int
 	)
 	switch {
-	case nameOnly:
-		ciFailingCount, err = runNameOnly(fetcher, repo, pr)
-	case isCount:
-		ciFailingCount, err = runCount(fetcher, repo, pr)
+	case flags.nameOnly:
+		ciFailingCount, err = runNameOnly(fetcher, flags.repo, pr)
+	case flags.count:
+		ciFailingCount, err = runCount(fetcher, flags.repo, pr)
 	default:
-		ciFailingCount, err = runMain(fetcher, repo, pr, groupBy, gha)
+		ciFailingCount, err = runMain(fetcher, flags.repo, pr, flags.groupBy, gha)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 	}
-	os.Exit(exitCode(err, ciFailingCount, isCI(), noCIFail))
+	os.Exit(exitCode(err, ciFailingCount, isCI(), flags.noCIFail))
 }
 
 func exitCode(err error, ciFailingCount int, ci, noCIFail bool) int {

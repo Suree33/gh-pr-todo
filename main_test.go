@@ -460,7 +460,7 @@ func TestRunFunctionsEmitWorkflowCommands(t *testing.T) {
 		out, _, _ := captureAll(t, func() {
 			_, _ = runMain(fetcher, "o/r", "1", types.GroupByNone, false)
 		})
-		if strings.Contains(out, "::notice ") || strings.Contains(out, "::warning ") {
+		if strings.Contains(out, "::notice ") || strings.Contains(out, "::warning ") || strings.Contains(out, "::error ") {
 			t.Fatalf("runMain(gha=false) unexpectedly emitted workflow command: %q", out)
 		}
 	})
@@ -470,7 +470,7 @@ func TestRunFunctionsEmitWorkflowCommands(t *testing.T) {
 		out, _, _ := captureAll(t, func() {
 			_, _ = runCount(fetcher, "o/r", "1")
 		})
-		if strings.Contains(out, "::notice") || strings.Contains(out, "::warning") {
+		if strings.Contains(out, "::notice") || strings.Contains(out, "::warning") || strings.Contains(out, "::error") {
 			t.Fatalf("runCount must not emit workflow commands; got %q", out)
 		}
 	})
@@ -480,7 +480,7 @@ func TestRunFunctionsEmitWorkflowCommands(t *testing.T) {
 		out, _, _ := captureAll(t, func() {
 			_, _ = runNameOnly(fetcher, "o/r", "1")
 		})
-		if strings.Contains(out, "::notice") || strings.Contains(out, "::warning") {
+		if strings.Contains(out, "::notice") || strings.Contains(out, "::warning") || strings.Contains(out, "::error") {
 			t.Fatalf("runNameOnly must not emit workflow commands; got %q", out)
 		}
 	})

@@ -71,11 +71,11 @@ gh pr-todo --group-by file
 - `--name-only`: Display only names of the files containing TODO comments
 - `-c, --count`: Display only the number of TODO comments
 - `-h, --help`: Display help information
-- `--no-ci-fail`: Disable non-zero exit when TODOs are found in CI (see below)
+- `--no-ci-fail`: Disable non-zero exit when warning-level TODOs are found in CI (see below)
 
 ### CI Mode
 
-When the `CI` environment variable is set to a truthy value (e.g. `1`, `true`, parsed via Go's `strconv.ParseBool`), `gh pr-todo` exits with status `1` if any TODO-style comments are detected in the PR diff. This makes it easy to fail a CI job when new TODOs slip into a pull request. `GITHUB_ACTIONS=true` (set automatically by the GitHub Actions runner) is treated as `CI=true` even when the `CI` variable is missing or falsy.
+When the `CI` environment variable is set to a truthy value (e.g. `1`, `true`, parsed via Go's `strconv.ParseBool`), `gh pr-todo` exits with status `1` if any warning-level TODO-style comments are detected in the PR diff. This matches the GitHub Actions annotation behavior: `FIXME`, `HACK`, `XXX`, and `BUG` fail CI, while notice-only `TODO` and `NOTE` comments do not. `GITHUB_ACTIONS=true` (set automatically by the GitHub Actions runner) is treated as `CI=true` even when the `CI` variable is missing or falsy.
 
 ```yaml
 # GitHub Actions example — CI=true is set automatically

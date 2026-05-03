@@ -90,23 +90,28 @@ func (p Policy) CountCIFailing(todos []types.TODO) int {
 	return n
 }
 
+// defaultPolicy is a cached immutable Policy reused by the package-level
+// wrappers to avoid rebuilding maps on every call. DefaultPolicy() still
+// returns a fresh copy for callers who need a configurable instance.
+var defaultPolicy = DefaultPolicy()
+
 // SeverityFor returns the default annotation severity for a TODO type.
 // FIXME, HACK, XXX, BUG → warning. All others (TODO, NOTE, unknown) → notice.
 func SeverityFor(todoType string) Severity {
-	return DefaultPolicy().SeverityFor(todoType)
+	return defaultPolicy.SeverityFor(todoType)
 }
 
 // IsCIFailing reports whether a TODO of the given type should cause a
 // non-zero exit in CI. It mirrors the default severity: warning-level
 // and error-level types fail, notice-level types do not.
 func IsCIFailing(todoType string) bool {
-	return DefaultPolicy().IsCIFailing(todoType)
+	return defaultPolicy.IsCIFailing(todoType)
 }
 
 // CountCIFailing returns the number of TODOs whose type maps to a
 // CI-failing severity.
 func CountCIFailing(todos []types.TODO) int {
-	return DefaultPolicy().CountCIFailing(todos)
+	return defaultPolicy.CountCIFailing(todos)
 }
 
 func normalizeTodoType(todoType string) string {

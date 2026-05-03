@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -17,6 +18,11 @@ import (
 )
 
 func main() {
+	// Use ContinueOnError so we can print a clear error and exit code 1
+	// instead of pflag's default ExitOnError (exit code 2).
+	pflag.CommandLine = pflag.NewFlagSet("gh pr-todo", pflag.ContinueOnError)
+	pflag.CommandLine.SetOutput(io.Discard)
+
 	var (
 		repo     string
 		nameOnly bool
@@ -24,6 +30,7 @@ func main() {
 		isHelp   bool
 		noCIFail bool
 		groupBy  = types.GroupByNone
+		sevFlag  = newSeverityFlag()
 	)
 	pflag.StringVarP(&repo, "repo", "R", "", "Select another repository using the [HOST/]OWNER/REPO format")
 	pflag.BoolVar(&nameOnly, "name-only", false, "Display only names of the files containing TODO comments")
@@ -31,8 +38,12 @@ func main() {
 	pflag.BoolVarP(&isHelp, "help", "h", false, "Display help information")
 	pflag.BoolVar(&noCIFail, "no-ci-fail", false, "Disable non-zero exit when error-level TODOs are found in CI")
 	pflag.Var(&groupBy, "group-by", "Group TODO comments by: \"file\" or \"type\"")
+	pflag.Var(sevFlag, "severity", "Override severity for one or more TODO types. Format: LEVEL=TYPE[,TYPE...] (e.g. --severity warning=TODO,HACK)")
 	pflag.Usage = printUsage
-	pflag.Parse()
+	if err := pflag.CommandLine.Parse(os.Args[1:]); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 	args := pflag.Args()
 
 	if isHelp {
@@ -57,6 +68,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	policy := todotype.DefaultPolicy()
+	if len(sevFlag.assignments) > 0 {
+		policy = policy.WithSeverities(sevFlag.assignments)
+	}
+
 	fetcher := ghclient.NewClient()
 	gha := isGitHubActions()
 	var (
@@ -65,11 +81,11 @@ func main() {
 	)
 	switch {
 	case nameOnly:
-		result, err = runNameOnly(fetcher, repo, pr)
+		result, err = runNameOnly(fetcher, repo, pr, policy)
 	case isCount:
-		result, err = runCount(fetcher, repo, pr)
+		result, err = runCount(fetcher, repo, pr, policy)
 	default:
-		result, err = runMain(fetcher, repo, pr, groupBy, gha)
+		result, err = runMain(fetcher, repo, pr, groupBy, gha, policy)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -83,11 +99,75 @@ type runResult struct {
 	ciFailingCount int
 }
 
-// newRunResult computes a runResult from a TODO slice.
-func newRunResult(todos []types.TODO) runResult {
+// severityFlag accumulates --severity LEVEL=TYPE[,TYPE...] flag values.
+// Each flag adds one or more type→severity assignments; later assignments
+// for the same type (case-insensitive) replace earlier ones (last-wins).
+type severityFlag struct {
+	assignments map[string]todotype.Severity
+}
+
+func newSeverityFlag() *severityFlag {
+	return &severityFlag{assignments: make(map[string]todotype.Severity)}
+}
+
+func (s *severityFlag) String() string {
+	return fmt.Sprintf("%v", s.assignments)
+}
+
+func (s *severityFlag) Set(val string) error {
+	eq := strings.IndexByte(val, '=')
+	if eq < 0 {
+		return fmt.Errorf("invalid --severity %q: expected LEVEL=TYPE[,TYPE...] (e.g. warning=TODO,HACK)", val)
+	}
+
+	levelStr := strings.TrimSpace(val[:eq])
+	typesStr := strings.TrimSpace(val[eq+1:])
+
+	if levelStr == "" {
+		return fmt.Errorf("invalid --severity %q: severity level is empty", val)
+	}
+	if typesStr == "" {
+		return fmt.Errorf("invalid --severity %q: type list is empty", val)
+	}
+
+	var severity todotype.Severity
+	switch strings.ToLower(levelStr) {
+	case "notice":
+		severity = todotype.SeverityNotice
+	case "warning":
+		severity = todotype.SeverityWarning
+	case "error":
+		severity = todotype.SeverityError
+	default:
+		return fmt.Errorf("invalid severity level %q in --severity %q: allowed values are notice, warning, error", levelStr, val)
+	}
+
+	pending := make(map[string]todotype.Severity)
+	for _, typ := range strings.Split(typesStr, ",") {
+		t := strings.TrimSpace(typ)
+		if t == "" {
+			return fmt.Errorf("invalid --severity %q: type name is empty", val)
+		}
+		if strings.ContainsRune(t, '=') {
+			return fmt.Errorf("invalid --severity %q: type name %q must not contain '='", val, t)
+		}
+		// Normalize type to uppercase for last-wins semantics across flags.
+		pending[strings.ToUpper(t)] = severity
+	}
+	for todoType, severity := range pending {
+		s.assignments[todoType] = severity
+	}
+
+	return nil
+}
+
+func (s *severityFlag) Type() string { return "severity" }
+
+// newRunResult computes a runResult from a TODO slice using the given policy.
+func newRunResult(todos []types.TODO, policy todotype.Policy) runResult {
 	return runResult{
 		totalCount:     len(todos),
-		ciFailingCount: todotype.CountCIFailing(todos),
+		ciFailingCount: policy.CountCIFailing(todos),
 	}
 }
 
@@ -147,9 +227,13 @@ func printUsage() {
 	fmt.Fprintf(color.Output, "  %s\n", "GITHUB_ACTIONS   When truthy, emits GitHub Actions workflow annotations.")
 	fmt.Fprintf(color.Output, "  %s\n", "                 Implies CI=true; --no-ci-fail suppresses error-level exits.")
 	fmt.Fprintf(color.Output, "  %s\n\n", "                 Only emitted in the default mode; --count and --name-only stay machine-readable.")
+	fmt.Fprintf(color.Output, "%s\n", output.Bold("SEVERITY OVERRIDES"))
+	fmt.Fprintf(color.Output, "  %s\n", "Use --severity LEVEL=TYPE[,TYPE...] to override severities.")
+	fmt.Fprintf(color.Output, "  %s\n", "Affects workflow annotation levels and CI exits for error-level types.")
+	fmt.Fprintf(color.Output, "  %s\n\n", "Example: --severity warning=TODO,HACK --severity error=FIXME")
 }
 
-func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy, gha bool) (runResult, error) {
+func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy, gha bool, policy todotype.Policy) (runResult, error) {
 	fetchingMsg := " Fetching PR diff..."
 	var sp *spinner.Spinner
 	if !gha {
@@ -177,25 +261,25 @@ func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy,
 	fmt.Fprintf(color.Output, output.Bold("\nFound %d TODO comment(s)\n\n"), len(todos))
 	output.PrintTODOs(todos, groupBy)
 	if gha {
-		output.PrintWorkflowCommands(todos)
+		output.PrintWorkflowCommands(todos, policy)
 	}
-	return newRunResult(todos), nil
+	return newRunResult(todos, policy), nil
 }
 
-func runCount(fetcher ghclient.PRFetcher, repo, pr string) (runResult, error) {
+func runCount(fetcher ghclient.PRFetcher, repo, pr string, policy todotype.Policy) (runResult, error) {
 	todos, err := ghclient.CollectTODOs(fetcher, repo, pr)
 	if err != nil {
 		return runResult{}, err
 	}
 	output.PrintCount(todos)
-	return newRunResult(todos), nil
+	return newRunResult(todos, policy), nil
 }
 
-func runNameOnly(fetcher ghclient.PRFetcher, repo, pr string) (runResult, error) {
+func runNameOnly(fetcher ghclient.PRFetcher, repo, pr string, policy todotype.Policy) (runResult, error) {
 	todos, err := ghclient.CollectTODOs(fetcher, repo, pr)
 	if err != nil {
 		return runResult{}, err
 	}
 	output.PrintFileNames(todos)
-	return newRunResult(todos), nil
+	return newRunResult(todos, policy), nil
 }

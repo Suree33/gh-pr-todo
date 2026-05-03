@@ -3,6 +3,7 @@ package output
 import (
 	"testing"
 
+	"github.com/Suree33/gh-pr-todo/internal/todotype"
 	"github.com/Suree33/gh-pr-todo/pkg/types"
 )
 
@@ -24,10 +25,29 @@ func TestPrintWorkflowCommands(t *testing.T) {
 		"::notice file=f.go,line=1,title=NOTE::// NOTE: f\n"
 
 	got := captureOutput(t, func() {
-		PrintWorkflowCommands(todos)
+		PrintWorkflowCommands(todos, todotype.DefaultPolicy())
 	})
 	if got != want {
 		t.Fatalf("PrintWorkflowCommands() output mismatch\ngot:  %q\nwant: %q", got, want)
+	}
+}
+
+func TestPrintWorkflowCommandsWithPolicy(t *testing.T) {
+	policy := todotype.DefaultPolicy().WithSeverity("TODO", todotype.SeverityWarning)
+
+	todos := []types.TODO{
+		{Filename: "a.go", Line: 5, Comment: "// TODO: a", Type: "TODO"},
+		{Filename: "b.go", Line: 20, Comment: "// FIXME: b", Type: "FIXME"},
+	}
+
+	want := "::warning file=a.go,line=5,title=TODO::// TODO: a\n" +
+		"::warning file=b.go,line=20,title=FIXME::// FIXME: b\n"
+
+	got := captureOutput(t, func() {
+		PrintWorkflowCommands(todos, policy)
+	})
+	if got != want {
+		t.Fatalf("PrintWorkflowCommands() with policy output mismatch\ngot:  %q\nwant: %q", got, want)
 	}
 }
 
@@ -45,7 +65,7 @@ func TestPrintWorkflowCommandsAppliesEscaping(t *testing.T) {
 		"// TODO: 100%25 rate%0D%0Arest of comment\n"
 
 	got := captureOutput(t, func() {
-		PrintWorkflowCommands(todos)
+		PrintWorkflowCommands(todos, todotype.DefaultPolicy())
 	})
 	if got != want {
 		t.Fatalf("PrintWorkflowCommands escaping mismatch\ngot:  %q\nwant: %q", got, want)
@@ -54,7 +74,7 @@ func TestPrintWorkflowCommandsAppliesEscaping(t *testing.T) {
 
 func TestPrintWorkflowCommandsEmpty(t *testing.T) {
 	got := captureOutput(t, func() {
-		PrintWorkflowCommands(nil)
+		PrintWorkflowCommands(nil, todotype.DefaultPolicy())
 	})
 	if got != "" {
 		t.Fatalf("PrintWorkflowCommands(nil) = %q, want empty", got)
@@ -114,9 +134,10 @@ func TestWorkflowCommandFor(t *testing.T) {
 		{"BUG", "warning"},
 		{"unknown", "notice"},
 	}
+	policy := todotype.DefaultPolicy()
 	for _, tt := range tests {
 		t.Run(tt.todoType, func(t *testing.T) {
-			if got := workflowCommandFor(tt.todoType); got != tt.want {
+			if got := workflowCommandFor(tt.todoType, policy); got != tt.want {
 				t.Fatalf("workflowCommandFor(%q) = %q, want %q", tt.todoType, got, tt.want)
 			}
 		})

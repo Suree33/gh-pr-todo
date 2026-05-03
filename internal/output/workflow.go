@@ -13,10 +13,10 @@ import (
 // for each TODO so that they show up in the PR/check-run UI.
 //
 // See https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands
-func PrintWorkflowCommands(todos []types.TODO) {
+func PrintWorkflowCommands(todos []types.TODO, policy todotype.Policy) {
 	for _, todo := range todos {
 		fmt.Fprintf(color.Output, "::%s file=%s,line=%d,title=%s::%s\n",
-			workflowCommandFor(todo.Type),
+			workflowCommandFor(todo.Type, policy),
 			escapeWorkflowProperty(todo.Filename),
 			todo.Line,
 			escapeWorkflowProperty(todo.Type),
@@ -25,8 +25,8 @@ func PrintWorkflowCommands(todos []types.TODO) {
 	}
 }
 
-func workflowCommandFor(todoType string) string {
-	switch todotype.SeverityFor(todoType) {
+func workflowCommandFor(todoType string, policy todotype.Policy) string {
+	switch policy.SeverityFor(todoType) {
 	case todotype.SeverityWarning:
 		return "warning"
 	case todotype.SeverityError:

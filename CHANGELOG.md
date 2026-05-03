@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.2](https://github.com/Suree33/gh-pr-todo/compare/v1.0.1...v1.0.2) (2026-05-03)
+
+
+### Refactoring
+
+* **todo-type:** introduce policy-based severity model ([#79](https://github.com/Suree33/gh-pr-todo/issues/79)) ([982509b](https://github.com/Suree33/gh-pr-todo/commit/982509bca90202794bac4fe81203d6b166657d8d))
+
+
+### Miscellaneous Chores
+
+* **workflow:** run gh pr-todo on pull requests ([#80](https://github.com/Suree33/gh-pr-todo/issues/80)) ([09f50d9](https://github.com/Suree33/gh-pr-todo/commit/09f50d9e2ec006f7da536f3956c904c337dc3a82))
+
 ## [1.0.1](https://github.com/Suree33/gh-pr-todo/compare/v1.0.0...v1.0.1) (2026-05-03)
 
 

@@ -44,10 +44,10 @@ func TestIsCIFailing(t *testing.T) {
 		{"TODO", false},
 		{"todo", false},
 		{"NOTE", false},
-		{"FIXME", true},
-		{"HACK", true},
-		{"XXX", true},
-		{"BUG", true},
+		{"FIXME", false},
+		{"HACK", false},
+		{"XXX", false},
+		{"BUG", false},
 		{"unknown", false},
 		{"", false},
 	}
@@ -85,7 +85,7 @@ func TestCountCIFailing(t *testing.T) {
 				{Type: "XXX"},
 				{Type: "BUG"},
 			},
-			want: 4,
+			want: 0,
 		},
 		{
 			name: "mixed notice and warning",
@@ -97,7 +97,7 @@ func TestCountCIFailing(t *testing.T) {
 				{Type: "XXX"},
 				{Type: "BUG"},
 			},
-			want: 4,
+			want: 0,
 		},
 		{
 			name: "lowercase mixed",
@@ -107,7 +107,7 @@ func TestCountCIFailing(t *testing.T) {
 				{Type: "note"},
 				{Type: "bug"},
 			},
-			want: 2,
+			want: 0,
 		},
 	}
 	for _, tt := range tests {
@@ -142,17 +142,17 @@ func TestDefaultPolicy(t *testing.T) {
 		}
 	})
 
-	t.Run("DefaultPolicy().IsCIFailing matches warning/error severities", func(t *testing.T) {
+	t.Run("DefaultPolicy().IsCIFailing matches error-only severity", func(t *testing.T) {
 		tests := []struct {
 			todoType string
 			want     bool
 		}{
 			{"TODO", false},
 			{"NOTE", false},
-			{"FIXME", true},
-			{"HACK", true},
-			{"XXX", true},
-			{"BUG", true},
+			{"FIXME", false},
+			{"HACK", false},
+			{"XXX", false},
+			{"BUG", false},
 			{"unknown", false},
 		}
 		for _, tt := range tests {
@@ -169,8 +169,8 @@ func TestDefaultPolicy(t *testing.T) {
 			{Type: "NOTE"},
 			{Type: "BUG"},
 		}
-		if got := p.CountCIFailing(todos); got != 2 {
-			t.Fatalf("CountCIFailing() = %d, want 2", got)
+		if got := p.CountCIFailing(todos); got != 0 {
+			t.Fatalf("CountCIFailing() = %d, want 0", got)
 		}
 	})
 }
@@ -185,9 +185,9 @@ func TestPolicyWithSeverity(t *testing.T) {
 		if got := p.SeverityFor("FIXME"); got != SeverityWarning {
 			t.Fatalf("SeverityFor(FIXME) = %q, want %q", got, SeverityWarning)
 		}
-		// CI fail: TODO is now warning, so it should fail
-		if !p.IsCIFailing("TODO") {
-			t.Fatal("IsCIFailing(TODO) should be true after override to warning")
+		// CI fail: warning does NOT fail CI by default (only error does)
+		if p.IsCIFailing("TODO") {
+			t.Fatal("IsCIFailing(TODO) should be false after override to warning")
 		}
 	})
 
@@ -259,14 +259,14 @@ func TestPolicyWithSeverity(t *testing.T) {
 }
 
 func TestPolicyCountCIFailingWithOverrides(t *testing.T) {
-	t.Run("custom type with warning severity fails CI", func(t *testing.T) {
+	t.Run("custom type with warning severity does not fail CI", func(t *testing.T) {
 		p := DefaultPolicy().WithSeverity("OPTIMIZE", SeverityWarning)
 		todos := []types.TODO{
 			{Type: "OPTIMIZE"},
 			{Type: "TODO"},
 		}
-		if got := p.CountCIFailing(todos); got != 1 {
-			t.Fatalf("CountCIFailing() = %d, want 1", got)
+		if got := p.CountCIFailing(todos); got != 0 {
+			t.Fatalf("CountCIFailing() = %d, want 0", got)
 		}
 	})
 

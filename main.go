@@ -29,7 +29,7 @@ func main() {
 	pflag.BoolVar(&nameOnly, "name-only", false, "Display only names of the files containing TODO comments")
 	pflag.BoolVarP(&isCount, "count", "c", false, "Display only the number of TODO comments")
 	pflag.BoolVarP(&isHelp, "help", "h", false, "Display help information")
-	pflag.BoolVar(&noCIFail, "no-ci-fail", false, "Disable non-zero exit when warning-level TODOs (FIXME/HACK/XXX/BUG) are found in CI")
+	pflag.BoolVar(&noCIFail, "no-ci-fail", false, "Disable non-zero exit when error-level TODOs are found in CI")
 	pflag.Var(&groupBy, "group-by", "Group TODO comments by: \"file\" or \"type\"")
 	pflag.Usage = printUsage
 	pflag.Parse()
@@ -141,11 +141,11 @@ func printUsage() {
 	fmt.Fprintln(color.Output)
 	fmt.Fprintf(color.Output, "%s\n", output.Bold("ENVIRONMENT"))
 	fmt.Fprintf(color.Output, "  %s\n", "CI               When truthy (e.g. \"1\", \"true\"), exits non-zero if any")
-	fmt.Fprintf(color.Output, "  %s\n", "                 warning-level TODO (FIXME/HACK/XXX/BUG) is found.")
-	fmt.Fprintf(color.Output, "  %s\n", "                 Notice-only keywords (TODO, NOTE) do not cause failures.")
-	fmt.Fprintf(color.Output, "  %s\n", "                 Override with --no-ci-fail.")
+	fmt.Fprintf(color.Output, "  %s\n", "                 error-level TODO is found. By default, no built-in")
+	fmt.Fprintf(color.Output, "  %s\n", "                 keyword maps to error-level, so CI does not fail.")
+	fmt.Fprintf(color.Output, "  %s\n", "                 Use --no-ci-fail to disable even if error-level types exist.")
 	fmt.Fprintf(color.Output, "  %s\n", "GITHUB_ACTIONS   When truthy, emits GitHub Actions workflow annotations.")
-	fmt.Fprintf(color.Output, "  %s\n", "                 Implies CI=true; --no-ci-fail suppresses warning-level exits.")
+	fmt.Fprintf(color.Output, "  %s\n", "                 Implies CI=true; --no-ci-fail suppresses error-level exits.")
 	fmt.Fprintf(color.Output, "  %s\n\n", "                 Only emitted in the default mode; --count and --name-only stay machine-readable.")
 }
 

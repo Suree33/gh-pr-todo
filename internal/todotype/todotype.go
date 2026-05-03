@@ -34,8 +34,7 @@ func DefaultPolicy() Policy {
 			"BUG":   SeverityWarning,
 		},
 		ciFailingSeverities: map[Severity]bool{
-			SeverityWarning: true,
-			SeverityError:   true,
+			SeverityError: true,
 		},
 	}
 }
@@ -73,7 +72,8 @@ func (p Policy) SeverityFor(todoType string) Severity {
 }
 
 // IsCIFailing reports whether a TODO of the given type should cause a
-// non-zero exit in CI.
+// non-zero exit in CI. By default, only error-level types fail;
+// warning-level and notice-level types do not.
 func (p Policy) IsCIFailing(todoType string) bool {
 	return p.ciFailingSeverities[p.SeverityFor(todoType)]
 }
@@ -102,8 +102,8 @@ func SeverityFor(todoType string) Severity {
 }
 
 // IsCIFailing reports whether a TODO of the given type should cause a
-// non-zero exit in CI. It mirrors the default severity: warning-level
-// and error-level types fail, notice-level types do not.
+// non-zero exit in CI. By default, only error-level types fail;
+// warning-level and notice-level types do not.
 func IsCIFailing(todoType string) bool {
 	return defaultPolicy.IsCIFailing(todoType)
 }

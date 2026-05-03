@@ -3,11 +3,13 @@ package main
 import (
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Suree33/gh-pr-todo/internal/config"
 	ghclient "github.com/Suree33/gh-pr-todo/internal/github"
 	"github.com/Suree33/gh-pr-todo/internal/output"
 	"github.com/Suree33/gh-pr-todo/internal/todotype"
@@ -16,6 +18,16 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/pflag"
 )
+
+func registerFlags(fs *pflag.FlagSet, repo *string, nameOnly, isCount, isHelp, noCIFail *bool, groupBy *types.GroupBy, sevFlag *severityFlag) {
+	fs.StringVarP(repo, "repo", "R", "", "Select another repository using the [HOST/]OWNER/REPO format")
+	fs.BoolVar(nameOnly, "name-only", false, "Display only names of the files containing TODO-style comments")
+	fs.BoolVarP(isCount, "count", "c", false, "Display only the number of TODO-style comments")
+	fs.BoolVarP(isHelp, "help", "h", false, "Display help information")
+	fs.BoolVar(noCIFail, "no-ci-fail", false, "Disable non-zero exit when error-level TODOs are found in CI")
+	fs.Var(groupBy, "group-by", "Group TODO-style comments by: \"file\" or \"type\"")
+	fs.Var(sevFlag, "severity", "Override severity for one or more TODO types. Format: LEVEL=TYPE[,TYPE...] (e.g. --severity warning=TODO,HACK)")
+}
 
 func main() {
 	// Use ContinueOnError so we can print a clear error and exit code 1
@@ -32,13 +44,7 @@ func main() {
 		groupBy  = types.GroupByNone
 		sevFlag  = newSeverityFlag()
 	)
-	pflag.StringVarP(&repo, "repo", "R", "", "Select another repository using the [HOST/]OWNER/REPO format")
-	pflag.BoolVar(&nameOnly, "name-only", false, "Display only names of the files containing TODO comments")
-	pflag.BoolVarP(&isCount, "count", "c", false, "Display only the number of TODO comments")
-	pflag.BoolVarP(&isHelp, "help", "h", false, "Display help information")
-	pflag.BoolVar(&noCIFail, "no-ci-fail", false, "Disable non-zero exit when error-level TODOs are found in CI")
-	pflag.Var(&groupBy, "group-by", "Group TODO comments by: \"file\" or \"type\"")
-	pflag.Var(sevFlag, "severity", "Override severity for one or more TODO types. Format: LEVEL=TYPE[,TYPE...] (e.g. --severity warning=TODO,HACK)")
+	registerFlags(pflag.CommandLine, &repo, &nameOnly, &isCount, &isHelp, &noCIFail, &groupBy, sevFlag)
 	pflag.Usage = printUsage
 	if err := pflag.CommandLine.Parse(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -68,17 +74,60 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Build policy with config and CLI overrides.
+	// Precedence: default < config < CLI.
 	policy := todotype.DefaultPolicy()
+
+	userConfigDir := ""
+	if dir, err := os.UserConfigDir(); err == nil {
+		userConfigDir = dir
+	}
+
+	configRepo, configPR, useRemoteConfig := resolveConfigTarget(repo, pr)
+
+	var (
+		cfg config.Config
+		err error
+	)
+	if useRemoteConfig {
+		cfg, err = config.LoadGlobal(userConfigDir)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Config error:", err)
+			os.Exit(1)
+		}
+		if len(cfg.Severities) > 0 {
+			policy = policy.WithSeverities(cfg.Severities)
+		}
+
+		fetcher := ghclient.NewClient()
+		cfg, err = config.LoadRemote(fetcher, configRepo, configPR)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Remote config error:", err)
+			os.Exit(1)
+		}
+	} else {
+		cwd, err := os.Getwd()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Error getting current directory:", err)
+			os.Exit(1)
+		}
+		cfg, err = config.LoadLocal(cwd, userConfigDir)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Config error:", err)
+			os.Exit(1)
+		}
+	}
+	if len(cfg.Severities) > 0 {
+		policy = policy.WithSeverities(cfg.Severities)
+	}
+
 	if len(sevFlag.assignments) > 0 {
 		policy = policy.WithSeverities(sevFlag.assignments)
 	}
 
 	fetcher := ghclient.NewClient()
 	gha := isGitHubActions()
-	var (
-		err    error
-		result runResult
-	)
+	var result runResult
 	switch {
 	case nameOnly:
 		result, err = runNameOnly(fetcher, repo, pr, policy)
@@ -196,8 +245,27 @@ func isGitHubActions() bool {
 	return err == nil && ok
 }
 
+func resolveConfigTarget(repo, pr string) (string, string, bool) {
+	if repo != "" {
+		return repo, pr, true
+	}
+	parsed, err := url.Parse(pr)
+	if err != nil || parsed.Host == "" {
+		return "", pr, false
+	}
+	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	if len(parts) != 4 || parts[2] != "pull" || parts[0] == "" || parts[1] == "" || parts[3] == "" {
+		return "", pr, false
+	}
+	repo = parts[0] + "/" + parts[1]
+	if parsed.Host != "github.com" {
+		repo = parsed.Host + "/" + repo
+	}
+	return repo, parts[3], true
+}
+
 func printUsage() {
-	fmt.Fprintf(color.Output, "%s\n\n", "View TODO comments in the PR diff.")
+	fmt.Fprintf(color.Output, "%s\n\n", "View TODO-style comments in the PR diff.")
 	fmt.Fprintf(color.Output, "%s\n", output.Bold("USAGE"))
 	fmt.Fprintf(color.Output, "  %s\n\n", "gh pr-todo [<number> | <url> | <branch>] [flags]")
 	fmt.Fprintf(color.Output, "%s\n", output.Bold("FLAGS"))
@@ -231,6 +299,23 @@ func printUsage() {
 	fmt.Fprintf(color.Output, "  %s\n", "Use --severity LEVEL=TYPE[,TYPE...] to override severities.")
 	fmt.Fprintf(color.Output, "  %s\n", "Affects workflow annotation levels and CI exits for error-level types.")
 	fmt.Fprintf(color.Output, "  %s\n\n", "Example: --severity warning=TODO,HACK --severity error=FIXME")
+	fmt.Fprintf(color.Output, "%s\n", output.Bold("CONFIGURATION"))
+	fmt.Fprintf(color.Output, "  %s\n", "Severity overrides can be configured in YAML config files.")
+	fmt.Fprintf(color.Output, "  %s\n", "Configured custom types are detected alongside the built-in markers.")
+	fmt.Fprintf(color.Output, "  %s\n", "Schema: severity:\n    TYPE: notice|warning|error")
+	fmt.Fprintf(color.Output, "  %s\n", "Config file paths and precedence (later wins):")
+	fmt.Fprintf(color.Output, "  %s\n", "  1. user config dir/gh-pr-todo/config.yml (global)")
+	fmt.Fprintf(color.Output, "  %s\n", "  2. <repo>/.gh-pr-todo.yml (repo root)")
+	fmt.Fprintf(color.Output, "  %s\n", "  3. <repo>/.github/gh-pr-todo.yml (narrower repo config)")
+	fmt.Fprintf(color.Output, "  %s\n", "  4. CLI --severity flag (highest priority)")
+	fmt.Fprintf(color.Output, "  %s\n", "When targeting another repository with --repo or a PR URL,")
+	fmt.Fprintf(color.Output, "  %s\n", "repo-local configs are replaced by remote configs:")
+	fmt.Fprintf(color.Output, "  %s\n", "  1. global config")
+	fmt.Fprintf(color.Output, "  %s\n", "  2. remote default branch config")
+	fmt.Fprintf(color.Output, "  %s\n", "  3. remote PR base branch config")
+	fmt.Fprintf(color.Output, "  %s\n", "  4. remote PR head branch config")
+	fmt.Fprintf(color.Output, "  %s\n", "  5. CLI --severity flag (highest priority)")
+	fmt.Fprintf(color.Output, "  %s\n\n", "Example config:\n# .github/gh-pr-todo.yml\nseverity:\n  TODO: warning\n  FIXME: error")
 }
 
 func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy, gha bool, policy todotype.Policy) (runResult, error) {
@@ -242,7 +327,7 @@ func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy,
 		sp.Start()
 	}
 
-	todos, err := ghclient.CollectTODOs(fetcher, repo, pr)
+	todos, err := ghclient.CollectTODOs(fetcher, repo, pr, policy.Types())
 	if sp != nil {
 		sp.Stop()
 	}
@@ -254,11 +339,11 @@ func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy,
 	fmt.Fprintf(color.Output, "%s%s\n", output.Green("✔"), fetchingMsg)
 
 	if len(todos) == 0 {
-		fmt.Fprintf(color.Output, "\nNo TODO comments found in the diff.\n")
+		fmt.Fprintf(color.Output, "\nNo TODO-style comments found in the diff.\n")
 		return runResult{}, nil
 	}
 
-	fmt.Fprintf(color.Output, output.Bold("\nFound %d TODO comment(s)\n\n"), len(todos))
+	fmt.Fprintf(color.Output, output.Bold("\nFound %d TODO-style comment(s)\n\n"), len(todos))
 	output.PrintTODOs(todos, groupBy)
 	if gha {
 		output.PrintWorkflowCommands(todos, policy)
@@ -267,7 +352,7 @@ func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy,
 }
 
 func runCount(fetcher ghclient.PRFetcher, repo, pr string, policy todotype.Policy) (runResult, error) {
-	todos, err := ghclient.CollectTODOs(fetcher, repo, pr)
+	todos, err := ghclient.CollectTODOs(fetcher, repo, pr, policy.Types())
 	if err != nil {
 		return runResult{}, err
 	}
@@ -276,7 +361,7 @@ func runCount(fetcher ghclient.PRFetcher, repo, pr string, policy todotype.Polic
 }
 
 func runNameOnly(fetcher ghclient.PRFetcher, repo, pr string, policy todotype.Policy) (runResult, error) {
-	todos, err := ghclient.CollectTODOs(fetcher, repo, pr)
+	todos, err := ghclient.CollectTODOs(fetcher, repo, pr, policy.Types())
 	if err != nil {
 		return runResult{}, err
 	}

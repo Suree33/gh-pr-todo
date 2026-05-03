@@ -2,18 +2,20 @@
 package internal
 
 import (
+	"fmt"
 	"path"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/Suree33/gh-pr-todo/internal/todotype"
 	"github.com/Suree33/gh-pr-todo/pkg/types"
 	"github.com/odvcencio/gotreesitter"
 	"github.com/odvcencio/gotreesitter/grammars"
 )
 
 var (
-	todoRegex = regexp.MustCompile(`(?i)((?://|#|<!--|;|/\*)\s*(TODO|FIXME|HACK|NOTE|XXX|BUG):?\s*.*)`)
 	hunkRegex = regexp.MustCompile(`^@@\s+\-\d+(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@`)
 
 	commentNodeTypes = map[string]bool{
@@ -23,6 +25,35 @@ var (
 		"documentation_comment": true,
 	}
 )
+
+// compileTODORegex builds a case-insensitive regex that matches TODO-style
+// comments for the given marker types. Marker names are escaped for literal
+// matching. The result is sorted for deterministic regex construction.
+func compileTODORegex(types []string) *regexp.Regexp {
+	sorted := make([]string, 0, len(types))
+	for _, t := range types {
+		if strings.TrimSpace(t) != "" {
+			sorted = append(sorted, t)
+		}
+	}
+	if len(sorted) == 0 {
+		return regexp.MustCompile(`a^`)
+	}
+	sort.Slice(sorted, func(i, j int) bool {
+		if len(sorted[i]) != len(sorted[j]) {
+			return len(sorted[i]) > len(sorted[j])
+		}
+		return sorted[i] < sorted[j]
+	})
+
+	quoted := make([]string, len(sorted))
+	for i, t := range sorted {
+		quoted[i] = regexp.QuoteMeta(t)
+	}
+
+	pattern := fmt.Sprintf(`(?i)((?://|#|<!--|;|/\*)\s*(%s)(?:$|[^[:alnum:]_].*))`, strings.Join(quoted, "|"))
+	return regexp.MustCompile(pattern)
+}
 
 // lineRange represents a 1-based inclusive line range.
 type lineRange struct {
@@ -36,8 +67,16 @@ type fileChange struct {
 	addedRanges []lineRange
 }
 
-// ParseDiff extracts TODO comments from git diff output using regex (legacy).
+// ParseDiff extracts TODO comments from git diff output using regex.
+// Uses the default built-in TODO marker types.
 func ParseDiff(diffOutput string) []types.TODO {
+	return ParseDiffWithTypes(diffOutput, todotype.DefaultTypes())
+}
+
+// ParseDiffWithTypes extracts TODO comments from git diff output using regex,
+// matching only the given marker types.
+func ParseDiffWithTypes(diffOutput string, todoTypes []string) []types.TODO {
+	re := compileTODORegex(todoTypes)
 	var todos []types.TODO
 	lines := strings.Split(diffOutput, "\n")
 
@@ -55,7 +94,7 @@ func ParseDiff(diffOutput string) []types.TODO {
 			}
 		} else if after, ok := strings.CutPrefix(line, "+"); ok {
 			lineNumber++
-			if matches := todoRegex.FindStringSubmatch(after); len(matches) > 2 {
+			if matches := re.FindStringSubmatch(after); len(matches) > 2 {
 				todos = append(todos, types.TODO{
 					Filename: currentFile,
 					Line:     lineNumber,
@@ -138,9 +177,16 @@ func extractFileChanges(diffOutput string) []fileChange {
 
 // ParseDiffWithContents extracts TODO comments using Tree-sitter for supported
 // languages, falling back to regex for unsupported files.
-// files maps file paths to their full post-change content. For files not present
-// in the map, TODOs are extracted from the diff output using regex.
+// Uses the default built-in TODO marker types.
 func ParseDiffWithContents(diffOutput string, files map[string][]byte) []types.TODO {
+	return ParseDiffWithContentsAndTypes(diffOutput, files, todotype.DefaultTypes())
+}
+
+// ParseDiffWithContentsAndTypes extracts TODO comments using Tree-sitter for
+// supported languages, falling back to regex for unsupported files.
+// todoTypes specifies which marker types to detect.
+func ParseDiffWithContentsAndTypes(diffOutput string, files map[string][]byte, todoTypes []string) []types.TODO {
+	re := compileTODORegex(todoTypes)
 	changes := extractFileChanges(diffOutput)
 	var todos []types.TODO
 	var missingFiles []string
@@ -156,10 +202,10 @@ func ParseDiffWithContents(diffOutput string, files map[string][]byte) []types.T
 			continue
 		}
 
-		if found := parseTODOsWithTreeSitter(fc, content); found != nil {
+		if found := parseTODOsWithTreeSitter(fc, content, re); found != nil {
 			todos = append(todos, found...)
 		} else {
-			todos = append(todos, parseTODOsWithRegex(fc, content)...)
+			todos = append(todos, parseTODOsWithRegex(fc, content, re)...)
 		}
 	}
 
@@ -168,7 +214,7 @@ func ParseDiffWithContents(diffOutput string, files map[string][]byte) []types.T
 		for _, f := range missingFiles {
 			missing[f] = true
 		}
-		for _, t := range ParseDiff(diffOutput) {
+		for _, t := range ParseDiffWithTypes(diffOutput, todoTypes) {
 			if missing[t.Filename] {
 				todos = append(todos, t)
 			}
@@ -181,7 +227,7 @@ func ParseDiffWithContents(diffOutput string, files map[string][]byte) []types.T
 // parseTODOsWithTreeSitter uses Tree-sitter to parse the file and extract TODO comments
 // from comment nodes that intersect with added lines. Returns nil if the language
 // is unsupported or parsing fails.
-func parseTODOsWithTreeSitter(fc fileChange, content []byte) []types.TODO {
+func parseTODOsWithTreeSitter(fc fileChange, content []byte, re *regexp.Regexp) []types.TODO {
 	entry := grammars.DetectLanguage(fc.path)
 	if entry == nil {
 		return nil
@@ -199,22 +245,22 @@ func parseTODOsWithTreeSitter(fc fileChange, content []byte) []types.TODO {
 	}
 
 	todos := make([]types.TODO, 0)
-	walkTree(root, bt, fc, content, &todos)
+	walkTree(root, bt, fc, &todos, re)
 	return todos
 }
 
 // walkTree recursively walks the AST and collects TODO comments from comment nodes.
-func walkTree(node *gotreesitter.Node, bt *gotreesitter.BoundTree, fc fileChange, source []byte, todos *[]types.TODO) {
+func walkTree(node *gotreesitter.Node, bt *gotreesitter.BoundTree, fc fileChange, todos *[]types.TODO, re *regexp.Regexp) {
 	nodeType := bt.NodeType(node)
 	if isCommentNode(nodeType) {
-		extractTODOsFromComment(node, bt, fc, source, todos)
+		extractTODOsFromComment(node, bt, fc, todos, re)
 		return
 	}
 
 	for i := 0; i < node.ChildCount(); i++ {
 		child := node.Child(i)
 		if child != nil {
-			walkTree(child, bt, fc, source, todos)
+			walkTree(child, bt, fc, todos, re)
 		}
 	}
 }
@@ -229,7 +275,7 @@ func isCommentNode(nodeType string) bool {
 
 // extractTODOsFromComment checks if a comment node intersects with added lines
 // and extracts TODO markers from it.
-func extractTODOsFromComment(node *gotreesitter.Node, bt *gotreesitter.BoundTree, fc fileChange, source []byte, todos *[]types.TODO) {
+func extractTODOsFromComment(node *gotreesitter.Node, bt *gotreesitter.BoundTree, fc fileChange, todos *[]types.TODO, re *regexp.Regexp) {
 	// Tree-sitter rows are 0-based, our line ranges are 1-based
 	nodeStartLine := int(node.StartPoint().Row) + 1
 
@@ -242,7 +288,7 @@ func extractTODOsFromComment(node *gotreesitter.Node, bt *gotreesitter.BoundTree
 			continue
 		}
 
-		if matches := todoRegex.FindStringSubmatch(line); len(matches) > 2 {
+		if matches := re.FindStringSubmatch(line); len(matches) > 2 {
 			*todos = append(*todos, types.TODO{
 				Filename: fc.path,
 				Line:     fileLine,
@@ -265,14 +311,14 @@ func lineInRanges(line int, ranges []lineRange) bool {
 
 // parseTODOsWithRegex is the fallback that applies regex matching against
 // added lines identified from the file content.
-func parseTODOsWithRegex(fc fileChange, content []byte) []types.TODO {
+func parseTODOsWithRegex(fc fileChange, content []byte, re *regexp.Regexp) []types.TODO {
 	var todos []types.TODO
 	lines := strings.Split(string(content), "\n")
 
 	for _, r := range fc.addedRanges {
 		for line := r.start; line <= r.end && line <= len(lines); line++ {
 			text := lines[line-1]
-			if matches := todoRegex.FindStringSubmatch(text); len(matches) > 2 {
+			if matches := re.FindStringSubmatch(text); len(matches) > 2 {
 				todos = append(todos, types.TODO{
 					Filename: fc.path,
 					Line:     line,

@@ -144,7 +144,7 @@ func TestRunMain(t *testing.T) {
 			},
 			wantContain: []string{
 				"Fetching PR diff...",
-				"No TODO comments found in the diff.",
+				"No TODO-style comments found in the diff.",
 			},
 		},
 		{
@@ -155,7 +155,7 @@ func TestRunMain(t *testing.T) {
 			},
 			groupBy: types.GroupByNone,
 			wantContain: []string{
-				"Found 1 TODO comment(s)",
+				"Found 1 TODO-style comment(s)",
 				"foo.go:2",
 				"// TODO: add bar",
 			},
@@ -168,7 +168,7 @@ func TestRunMain(t *testing.T) {
 			},
 			groupBy: types.GroupByFile,
 			wantContain: []string{
-				"Found 1 TODO comment(s)",
+				"Found 1 TODO-style comment(s)",
 				"foo.go",
 				"2: // TODO: add bar",
 			},
@@ -181,7 +181,7 @@ func TestRunMain(t *testing.T) {
 			},
 			groupBy: types.GroupByType,
 			wantContain: []string{
-				"Found 1 TODO comment(s)",
+				"Found 1 TODO-style comment(s)",
 				"[TODO]",
 				"foo.go:2",
 			},
@@ -194,7 +194,7 @@ func TestRunMain(t *testing.T) {
 				filesErr: errors.New("contents failed"),
 			},
 			wantContain: []string{
-				"Found 1 TODO comment(s)",
+				"Found 1 TODO-style comment(s)",
 			},
 			wantStderr: "Warning: could not fetch changed file contents",
 		},
@@ -673,6 +673,36 @@ func TestRunFunctionsReturnZeroOnError(t *testing.T) {
 	})
 }
 
+func TestResolveConfigTarget(t *testing.T) {
+	t.Run("explicit repo uses remote config", func(t *testing.T) {
+		repo, pr, remote := resolveConfigTarget("owner/repo", "123")
+		if !remote || repo != "owner/repo" || pr != "123" {
+			t.Fatalf("resolveConfigTarget() = (%q, %q, %v)", repo, pr, remote)
+		}
+	})
+
+	t.Run("github PR URL uses remote config", func(t *testing.T) {
+		repo, pr, remote := resolveConfigTarget("", "https://github.com/owner/repo/pull/123")
+		if !remote || repo != "owner/repo" || pr != "123" {
+			t.Fatalf("resolveConfigTarget() = (%q, %q, %v)", repo, pr, remote)
+		}
+	})
+
+	t.Run("host-qualified PR URL preserves host", func(t *testing.T) {
+		repo, pr, remote := resolveConfigTarget("", "https://github.example.com/owner/repo/pull/123")
+		if !remote || repo != "github.example.com/owner/repo" || pr != "123" {
+			t.Fatalf("resolveConfigTarget() = (%q, %q, %v)", repo, pr, remote)
+		}
+	})
+
+	t.Run("non-PR URL stays local", func(t *testing.T) {
+		repo, pr, remote := resolveConfigTarget("", "https://github.com/owner/repo/issues/123")
+		if remote || repo != "" || pr != "https://github.com/owner/repo/issues/123" {
+			t.Fatalf("resolveConfigTarget() = (%q, %q, %v)", repo, pr, remote)
+		}
+	})
+}
+
 func TestPrintUsage(t *testing.T) {
 	originalCommandLine := pflag.CommandLine
 	pflag.CommandLine = pflag.NewFlagSet("gh pr-todo", pflag.ContinueOnError)
@@ -687,13 +717,7 @@ func TestPrintUsage(t *testing.T) {
 		groupBy  = types.GroupByNone
 		sevFlag  = newSeverityFlag()
 	)
-	pflag.StringVarP(&repo, "repo", "R", "", "Select another repository using the [HOST/]OWNER/REPO format")
-	pflag.BoolVar(&nameOnly, "name-only", false, "Display only names of the files containing TODO comments")
-	pflag.BoolVarP(&isCount, "count", "c", false, "Display only the number of TODO comments")
-	pflag.BoolVarP(&isHelp, "help", "h", false, "Display help information")
-	pflag.BoolVar(&noCIFail, "no-ci-fail", false, "Disable non-zero exit when error-level TODOs are found in CI")
-	pflag.Var(&groupBy, "group-by", "Group TODO comments by: \"file\" or \"type\"")
-	pflag.Var(sevFlag, "severity", "Override severity for one or more TODO types. Format: LEVEL=TYPE[,TYPE...] (e.g. --severity warning=TODO,HACK)")
+	registerFlags(pflag.CommandLine, &repo, &nameOnly, &isCount, &isHelp, &noCIFail, &groupBy, sevFlag)
 
 	var out string
 	stdout := captureStdout(t, func() {
@@ -710,12 +734,14 @@ func TestPrintUsage(t *testing.T) {
 	}
 
 	wantContain := []string{
-		"View TODO comments in the PR diff.",
+		"View TODO-style comments in the PR diff.",
 		"USAGE",
 		"gh pr-todo [<number> | <url> | <branch>] [flags]",
 		"FLAGS",
 		"--repo",
+		"Display only names of the files containing TODO-style comments",
 		"--name-only",
+		"Display only the number of TODO-style comments",
 		"--count",
 		"--help",
 		"--group-by",
@@ -727,11 +753,22 @@ func TestPrintUsage(t *testing.T) {
 		"error-level TODO is found.",
 		"By default, no built-in",
 		"keyword maps to error-level",
-		"--no-ci-fail",
 		"SEVERITY OVERRIDES",
 		"LEVEL=TYPE[,TYPE...]",
 		"workflow annotation levels and CI exits",
 		"warning=TODO,HACK",
+		"CONFIGURATION",
+		"Configured custom types are detected alongside the built-in markers.",
+		"user config dir/gh-pr-todo/config.yml",
+		".gh-pr-todo.yml",
+		".github/gh-pr-todo.yml",
+		"remote configs",
+		"--group-by",
+		"Group TODO-style comments by: \"file\" or \"type\"",
+		"remote default branch config",
+		"remote PR base branch config",
+		"remote PR head branch config",
+		"CLI --severity flag (highest priority)",
 	}
 	for _, want := range wantContain {
 		if !strings.Contains(out, want) {

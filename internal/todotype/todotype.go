@@ -4,6 +4,7 @@
 package todotype
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/Suree33/gh-pr-todo/pkg/types"
@@ -88,6 +89,35 @@ func (p Policy) CountCIFailing(todos []types.TODO) int {
 		}
 	}
 	return n
+}
+
+// defaultTypes is the built-in TODO marker set.
+var defaultTypes = []string{"BUG", "FIXME", "HACK", "NOTE", "TODO", "XXX"}
+
+// DefaultTypes returns a copy of the built-in TODO marker types.
+func DefaultTypes() []string {
+	result := make([]string, len(defaultTypes))
+	copy(result, defaultTypes)
+	return result
+}
+
+// Types returns all TODO marker types known to this policy, including
+// built-in markers and any custom types added via severity overrides.
+// The result is sorted alphabetically and normalized to uppercase.
+func (p Policy) Types() []string {
+	typeSet := make(map[string]bool)
+	for _, t := range defaultTypes {
+		typeSet[t] = true
+	}
+	for t := range p.severityByType {
+		typeSet[normalizeTodoType(t)] = true
+	}
+	result := make([]string, 0, len(typeSet))
+	for t := range typeSet {
+		result = append(result, t)
+	}
+	sort.Strings(result)
+	return result
 }
 
 // defaultPolicy is a cached shared Policy used by the package-level

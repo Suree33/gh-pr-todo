@@ -625,15 +625,18 @@ func TestTodoRegex(t *testing.T) {
 		{"Lowercase todo", "// todo: case insensitive", true, "todo"},
 		{"Mixed case", "// Todo: mixed case", true, "Todo"},
 		{"No colon", "// TODO implement feature", true, "TODO"},
+		{"Comma delimiter", "// TODO, implement feature", true, "TODO"},
+		{"Paren delimiter", "// BUG) temporary workaround", true, "BUG"},
 		{"Multiple spaces", "//    TODO:     spaced out", true, "TODO"},
 		{"Tab indented", "\t// TODO: indented with tab", true, "TODO"},
 		{"Not a todo", "// regular comment", false, ""},
 		{"Empty line", "", false, ""},
 	}
 
+	re := compileTODORegex([]string{"TODO", "FIXME", "HACK", "NOTE", "XXX", "BUG"})
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			matches := todoRegex.FindStringSubmatch(tt.input)
+			matches := re.FindStringSubmatch(tt.input)
 			if tt.matches {
 				if len(matches) < 2 {
 					t.Errorf("Expected regex to match %q, but it didn't", tt.input)
@@ -692,5 +695,57 @@ func TestHunkRegex(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestCompileTODORegexTypeBoundaries(t *testing.T) {
+	t.Run("prefers longer type names", func(t *testing.T) {
+		re := compileTODORegex([]string{"TODO", "TODO2"})
+		matches := re.FindStringSubmatch("// TODO2: longer marker")
+		if len(matches) < 3 {
+			t.Fatalf("expected TODO2 marker to match")
+		}
+		if matches[2] != "TODO2" {
+			t.Fatalf("marker = %q, expected TODO2", matches[2])
+		}
+	})
+
+	t.Run("does not match unconfigured prefixed marker", func(t *testing.T) {
+		re := compileTODORegex([]string{"TODO"})
+		if matches := re.FindStringSubmatch("// TODO2: longer marker"); len(matches) > 0 {
+			t.Fatalf("expected no match, got %v", matches)
+		}
+	})
+
+	t.Run("empty type list matches nothing", func(t *testing.T) {
+		re := compileTODORegex(nil)
+		if matches := re.FindStringSubmatch("// TODO: regular marker"); len(matches) > 0 {
+			t.Fatalf("expected no match, got %v", matches)
+		}
+	})
+}
+
+func TestParseDiffWithTypesDetectsCustomType(t *testing.T) {
+	diff := "diff --git a/security.go b/security.go\n" +
+		"index 1234567..abcdefg 100644\n" +
+		"--- a/security.go\n" +
+		"+++ b/security.go\n" +
+		"@@ -1,3 +1,4 @@\n" +
+		" package main\n" +
+		" \n" +
+		"+// SECURITY: review token handling\n" +
+		" func main() {}"
+
+	result := ParseDiffWithTypes(diff, []string{"TODO", "SECURITY"})
+	expected := []types.TODO{
+		{
+			Filename: "security.go",
+			Line:     3,
+			Comment:  "// SECURITY: review token handling",
+			Type:     "SECURITY",
+		},
+	}
+	if !reflect.DeepEqual(result, expected) {
+		t.Fatalf("ParseDiffWithTypes() = %+v, expected %+v", result, expected)
 	}
 }

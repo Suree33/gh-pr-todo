@@ -36,7 +36,7 @@ gh pr-todo
 
 ### Advanced Usage
 
-You can specify PR numbers, URLs, or branches, and you can target another repository with `-R/--repo`:
+You can specify PR numbers, URLs, or branches, and you can target another repository with `-R/--repo` or a PR URL:
 
 ```bash
 # Specify a specific PR number
@@ -54,13 +54,13 @@ gh pr-todo feature-branch
 # Specify a branch from a different repository
 gh pr-todo feature-branch -R owner/repo
 
-# Display only names of the files containing TODO comments
+# Display only names of the files containing TODO-style comments
 gh pr-todo --name-only
 
-# Display only the number of TODO comments
+# Display only the number of TODO-style comments
 gh pr-todo -c
 
-# Group TODO comments by file (or type)
+# Group TODO-style comments by file (or type)
 gh pr-todo --group-by file
 
 # Override severities for one or more TODO types
@@ -72,16 +72,58 @@ gh pr-todo --severity warning=TODO,HACK --severity error=FIXME
 
 - `[<number> | <url> | <branch>]`: Specify a PR by number, URL, or branch name
 - `-R, --repo [HOST/]OWNER/REPO`: Select another repository using the [HOST/]OWNER/REPO format (requires a PR number, URL, or branch argument)
-- `--group-by`: Group TODO comments by `file` or `type`
-- `--name-only`: Display only names of the files containing TODO comments
-- `-c, --count`: Display only the number of TODO comments
+- `--group-by`: Group TODO-style comments by `file` or `type`
+- `--name-only`: Display only names of the files containing TODO-style comments
+- `-c, --count`: Display only the number of TODO-style comments
 - `--severity LEVEL=TYPE[,TYPE...]`: Override severity for one or more TODO types; repeatable, whitespace-tolerant, and last assignment wins for duplicate types
 - `-h, --help`: Display help information
 - `--no-ci-fail`: Disable non-zero exit when error-level TODOs are found in CI (see below)
 
+### Configuration File
+
+Severity overrides can be persisted in YAML configuration files. Config files use the following schema:
+
+```yaml
+severity:
+  TYPE: notice|warning|error
+```
+
+Example (`.github/gh-pr-todo.yml`):
+
+```yaml
+severity:
+  TODO: warning
+  FIXME: error
+```
+
+#### Config File Paths
+
+Config files are loaded from these locations in order of increasing precedence:
+
+1. User config dir `gh-pr-todo/config.yml` (global, shared across all repos; usually `~/.config/gh-pr-todo/config.yml` on Linux)
+2. `<repo>/.gh-pr-todo.yml` (repository root)
+3. `<repo>/.github/gh-pr-todo.yml` (narrower repo scope)
+4. CLI `--severity` flag (highest priority)
+
+Each file's severity overrides are merged into the previous level. A more specific file overrides the same keys from a broader file. Unspecified keys keep their previous value.
+
+Configured TODO types are automatically detected in PR diffs alongside the built-in types. You can define custom types like `SECURITY` or `PERF` and they will be recognized.
+
+#### Remote Config Precedence
+
+When targeting another repository with `--repo` or a PR URL, local repository config files are replaced by remote configuration files with the following precedence (later wins):
+
+1. Global local config (user config dir `gh-pr-todo/config.yml`)
+2. Remote default branch config
+3. Remote PR base branch config
+4. Remote PR head branch config
+5. CLI `--severity` flag (highest priority)
+
+For each remote scope, both `.gh-pr-todo.yml` and `.github/gh-pr-todo.yml` are checked (the narrower path wins within each scope).
+
 ### CI Mode
 
-When the `CI` environment variable is truthy (e.g. `1`, `true`, parsed via Go's `strconv.ParseBool`), `gh pr-todo` exits with status `1` if any **error-level** TODO-style comments are detected in the PR diff. By default, no built-in keyword type is mapped to error-level, so `gh pr-todo` does **not** fail CI based on default keywords alone. Use `--severity` to promote recognized TODO keywords to `error` when you want CI failures, for example `--severity error=FIXME`. `GITHUB_ACTIONS=true` (set by the GitHub Actions runner) is treated as `CI=true` even when `CI` is missing or falsy.
+When the `CI` environment variable is truthy (e.g. `1`, `true`, parsed via Go's `strconv.ParseBool`), `gh pr-todo` exits with status `1` if any **error-level** TODO-style comments are detected in the PR diff. By default, no built-in keyword type is mapped to error-level, so `gh pr-todo` does **not** fail CI based on default keywords alone. Use configuration files or `--severity` to promote recognized TODO keywords to `error` when you want CI failures, for example `--severity error=FIXME`. `GITHUB_ACTIONS=true` (set by the GitHub Actions runner) is treated as `CI=true` even when `CI` is missing or falsy.
 
 ```yaml
 # GitHub Actions example — CI=true is set automatically
@@ -103,7 +145,7 @@ Default annotation severities:
 - `TODO`, `NOTE` → `::notice` annotations
 - `FIXME`, `HACK`, `XXX`, `BUG` → `::warning` annotations
 
-You can override them with `--severity`, for example:
+You can override them with configuration files or `--severity`, for example:
 
 - `--severity warning=TODO,NOTE`
 - `--severity error=FIXME`
@@ -119,7 +161,7 @@ Workflow commands are only emitted in the default mode. The machine-readable mod
 ```
 ✔ Fetching PR diff...
 
-Found 3 TODO comment(s)
+Found 3 TODO-style comment(s)
 
 * src/api/users.go:42
   // TODO: Add input validation for email format
@@ -145,12 +187,27 @@ The tool recognizes TODO-style comments in various formats:
 
 ## Supported Keywords
 
+### Default Keywords
+
 - `TODO`
 - `FIXME`
 - `HACK`
 - `NOTE`
 - `XXX`
 - `BUG`
+
+### Custom Keywords
+
+Additional keywords can be defined via [configuration files](#configuration-file) or the `--severity` CLI flag. Any custom type assigned a severity will be detected in PR diffs alongside the default keywords. For example:
+
+```yaml
+# .github/gh-pr-todo.yml
+severity:
+  SECURITY: error
+  PERF: warning
+```
+
+This configures `SECURITY` and `PERF` as recognized TODO markers.
 
 ## Development
 
@@ -167,10 +224,14 @@ go build -o gh-pr-todo .
 ```
 ├── main.go              # CLI entry point
 ├── internal/
+│   ├── config/
+│   │   ├── config.go    # YAML config parsing and local loading
+│   │   └── remote.go    # Remote config loading
 │   ├── github/
-│   │   └── client.go    # GitHub API client (diffs & file contents)
+│   │   └── client.go    # GitHub API client (diffs, file contents, remote config)
 │   ├── output/
-│   │   └── printer.go   # Terminal output rendering
+│   │   ├── printer.go   # Terminal output rendering
+│   │   └── workflow.go  # GitHub Actions annotation commands
 │   └── parser.go        # Diff parsing logic (Tree-sitter + regex)
 ├── pkg/
 │   └── types/

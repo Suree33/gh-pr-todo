@@ -10,8 +10,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Suree33/gh-pr-todo/internal/todotype"
 	"github.com/Suree33/gh-pr-todo/pkg/types"
 )
+
+// defaultTypes is used as the todoTypes argument in CollectTODOs calls.
+var defaultTypes = todotype.DefaultTypes()
 
 func TestNewClient(t *testing.T) {
 	if NewClient() == nil {
@@ -216,6 +220,102 @@ func TestFetchDiff(t *testing.T) {
 	}
 }
 
+func TestFetchRemoteConfigRefs(t *testing.T) {
+	var calls [][]string
+	withGhExec(t, func(args ...string) (bytes.Buffer, bytes.Buffer, error) {
+		copied := append([]string(nil), args...)
+		calls = append(calls, copied)
+		switch len(calls) {
+		case 1:
+			return *bytes.NewBufferString(`{"defaultBranchRef":{"name":"main"},"nameWithOwner":"owner/repo"}`), bytes.Buffer{}, nil
+		case 2:
+			return *bytes.NewBufferString(`{"baseRefName":"release","headRefOid":"abc123","headRepository":{"nameWithOwner":"fork/repo"}}`), bytes.Buffer{}, nil
+		default:
+			return bytes.Buffer{}, bytes.Buffer{}, errors.New("unexpected call")
+		}
+	})
+
+	refs, err := NewClient().FetchRemoteConfigRefs("github.example.com/owner/repo", "42")
+	if err != nil {
+		t.Fatalf("FetchRemoteConfigRefs() unexpected error: %v", err)
+	}
+	wantCalls := [][]string{
+		{"repo", "view", "github.example.com/owner/repo", "--json", "defaultBranchRef,nameWithOwner"},
+		{"pr", "view", "--json", "baseRefName,headRefOid,headRepository", "-R", "github.example.com/owner/repo", "42"},
+	}
+	if !reflect.DeepEqual(calls, wantCalls) {
+		t.Fatalf("ghExec calls = %v, expected %v", calls, wantCalls)
+	}
+	if refs.DefaultRepo != "github.example.com/owner/repo" || refs.BaseRepo != "github.example.com/owner/repo" || refs.HeadRepo != "github.example.com/fork/repo" {
+		t.Fatalf("refs repos = default %q base %q head %q", refs.DefaultRepo, refs.BaseRepo, refs.HeadRepo)
+	}
+	if refs.DefaultBranchRef != "main" || refs.BaseBranchRef != "release" || refs.HeadRefOid != "abc123" {
+		t.Fatalf("refs = %+v", refs)
+	}
+}
+
+func TestFetchFileAtRef(t *testing.T) {
+	t.Run("fetches raw content with escaped path and ref", func(t *testing.T) {
+		var gotArgs []string
+		withGhExec(t, func(args ...string) (bytes.Buffer, bytes.Buffer, error) {
+			gotArgs = args
+			return *bytes.NewBufferString("severity:\n  TODO: error\n"), bytes.Buffer{}, nil
+		})
+
+		got, found, err := NewClient().FetchFileAtRef("owner/repo", ".github/gh pr-todo.yml", "feature/config")
+		if err != nil {
+			t.Fatalf("FetchFileAtRef() unexpected error: %v", err)
+		}
+		if !found {
+			t.Fatal("FetchFileAtRef() found = false, expected true")
+		}
+		if string(got) != "severity:\n  TODO: error\n" {
+			t.Fatalf("FetchFileAtRef() data = %q", got)
+		}
+		wantArgs := []string{"api", "repos/owner/repo/contents/.github/gh%20pr-todo.yml?ref=feature%2Fconfig", "-H", "Accept: application/vnd.github.raw+json"}
+		if !reflect.DeepEqual(gotArgs, wantArgs) {
+			t.Fatalf("ghExec args = %v, expected %v", gotArgs, wantArgs)
+		}
+	})
+
+	t.Run("host-qualified repo passes hostname to gh api", func(t *testing.T) {
+		var gotArgs []string
+		withGhExec(t, func(args ...string) (bytes.Buffer, bytes.Buffer, error) {
+			gotArgs = args
+			return *bytes.NewBufferString("severity: {}\n"), bytes.Buffer{}, nil
+		})
+
+		_, found, err := NewClient().FetchFileAtRef("github.example.com/owner/repo", ".gh-pr-todo.yml", "main")
+		if err != nil {
+			t.Fatalf("FetchFileAtRef() unexpected error: %v", err)
+		}
+		if !found {
+			t.Fatal("FetchFileAtRef() found = false, expected true")
+		}
+		wantArgs := []string{"api", "repos/owner/repo/contents/.gh-pr-todo.yml?ref=main", "-H", "Accept: application/vnd.github.raw+json", "--hostname", "github.example.com"}
+		if !reflect.DeepEqual(gotArgs, wantArgs) {
+			t.Fatalf("ghExec args = %v, expected %v", gotArgs, wantArgs)
+		}
+	})
+
+	t.Run("not found returns found false without error", func(t *testing.T) {
+		withGhExec(t, func(args ...string) (bytes.Buffer, bytes.Buffer, error) {
+			return bytes.Buffer{}, *bytes.NewBufferString("HTTP 404: Not Found"), errors.New("exit 1")
+		})
+
+		got, found, err := NewClient().FetchFileAtRef("owner/repo", ".gh-pr-todo.yml", "main")
+		if err != nil {
+			t.Fatalf("FetchFileAtRef() unexpected error: %v", err)
+		}
+		if found {
+			t.Fatal("FetchFileAtRef() found = true, expected false")
+		}
+		if got != nil {
+			t.Fatalf("FetchFileAtRef() data = %q, expected nil", got)
+		}
+	})
+}
+
 const sampleDiff = `diff --git a/foo.go b/foo.go
 index 0000000..1111111 100644
 --- a/foo.go
@@ -310,6 +410,31 @@ func TestFetchChangedFileContents(t *testing.T) {
 		}
 	})
 
+	t.Run("host-qualified repo passes hostname when fetching changed file contents", func(t *testing.T) {
+		metaJSON := `{"headRefOid":"feature/sha","headRepository":{"nameWithOwner":"o/r"}}`
+		var calls [][]string
+		withGhExec(t, func(args ...string) (bytes.Buffer, bytes.Buffer, error) {
+			copied := append([]string(nil), args...)
+			calls = append(calls, copied)
+			if args[0] == "pr" {
+				return *bytes.NewBufferString(metaJSON), bytes.Buffer{}, nil
+			}
+			return *bytes.NewBufferString("file contents"), bytes.Buffer{}, nil
+		})
+
+		_, err := NewClient().FetchChangedFileContents("github.example.com/o/r", "1", sampleDiff)
+		if err != nil {
+			t.Fatalf("FetchChangedFileContents() unexpected error: %v", err)
+		}
+		if len(calls) != 2 {
+			t.Fatalf("expected 2 calls, got %d: %v", len(calls), calls)
+		}
+		want := []string{"api", "repos/o/r/contents/foo.go?ref=feature%2Fsha", "-H", "Accept: application/vnd.github.raw+json", "--hostname", "github.example.com"}
+		if !reflect.DeepEqual(calls[1], want) {
+			t.Fatalf("second call args = %v, expected %v", calls[1], want)
+		}
+	})
+
 	t.Run("partial failure returns error and partial files", func(t *testing.T) {
 		withGhExec(t, func(args ...string) (bytes.Buffer, bytes.Buffer, error) {
 			if args[0] == "pr" {
@@ -366,7 +491,7 @@ func TestCollectTODOs(t *testing.T) {
 			err   error
 		)
 		stderrOut := captureStderr(t, func() {
-			todos, err = CollectTODOs(s, "o/r", "1")
+			todos, err = CollectTODOs(s, "o/r", "1", defaultTypes)
 		})
 		if err == nil || err.Error() != "diff failed" {
 			t.Fatalf("expected diff failed error, got %v", err)
@@ -398,7 +523,7 @@ func TestCollectTODOs(t *testing.T) {
 		var todos []types.TODO
 		var err error
 		stderrOut := captureStderr(t, func() {
-			todos, err = CollectTODOs(s, "o/r", "2")
+			todos, err = CollectTODOs(s, "o/r", "2", defaultTypes)
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -421,7 +546,7 @@ func TestCollectTODOs(t *testing.T) {
 			err   error
 		)
 		stderrOut := captureStderr(t, func() {
-			todos, err = CollectTODOs(s, "o/r", "3")
+			todos, err = CollectTODOs(s, "o/r", "3", defaultTypes)
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -440,6 +565,33 @@ func TestCollectTODOs(t *testing.T) {
 		}
 		if s.gotDiffFC != sampleDiff {
 			t.Fatalf("FetchChangedFileContents received diff %q", s.gotDiffFC)
+		}
+	})
+
+	t.Run("custom marker type flows through collection", func(t *testing.T) {
+		diff := "diff --git a/security.go b/security.go\n" +
+			"index 0000000..1111111 100644\n" +
+			"--- a/security.go\n" +
+			"+++ b/security.go\n" +
+			"@@ -1,1 +1,2 @@\n" +
+			" package security\n" +
+			"+// SECURITY: review token handling\n"
+		s := &stubFetcher{
+			diff:  diff,
+			files: map[string][]byte{"security.go": []byte("package security\n// SECURITY: review token handling\n")},
+		}
+		todos, err := CollectTODOs(s, "o/r", "4", []string{"TODO", "SECURITY"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		want := []types.TODO{{
+			Filename: "security.go",
+			Line:     2,
+			Comment:  "// SECURITY: review token handling",
+			Type:     "SECURITY",
+		}}
+		if !reflect.DeepEqual(todos, want) {
+			t.Fatalf("todos = %#v, expected %#v", todos, want)
 		}
 	})
 }

@@ -81,7 +81,7 @@ gh pr-todo --severity warning=TODO,HACK --severity error=FIXME
 
 ### CI Mode
 
-When the `CI` environment variable is truthy (e.g. `1`, `true`, parsed via Go's `strconv.ParseBool`), `gh pr-todo` exits with status `1` if any **error-level** TODO-style comments are detected in the PR diff. By default, no built-in keyword type is mapped to error-level, so `gh pr-todo` does **not** fail CI based on default keywords alone. Use `--severity` to promote any built-in or custom type to `error` when you want CI failures, for example `--severity error=FIXME`. `GITHUB_ACTIONS=true` (set by the GitHub Actions runner) is treated as `CI=true` even when `CI` is missing or falsy.
+When the `CI` environment variable is truthy (e.g. `1`, `true`, parsed via Go's `strconv.ParseBool`), `gh pr-todo` exits with status `1` if any **error-level** TODO-style comments are detected in the PR diff. By default, no built-in keyword type is mapped to error-level, so `gh pr-todo` does **not** fail CI based on default keywords alone. Use `--severity` to promote recognized TODO keywords to `error` when you want CI failures, for example `--severity error=FIXME`. `GITHUB_ACTIONS=true` (set by the GitHub Actions runner) is treated as `CI=true` even when `CI` is missing or falsy.
 
 ```yaml
 # GitHub Actions example — CI=true is set automatically

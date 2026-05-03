@@ -26,11 +26,7 @@ func PrintWorkflowCommands(todos []types.TODO) {
 }
 
 func workflowCommandFor(todoType string) string {
-	return workflowCommand(todotype.SeverityFor(todoType))
-}
-
-func workflowCommand(severity todotype.Severity) string {
-	switch severity {
+	switch todotype.SeverityFor(todoType) {
 	case todotype.SeverityWarning:
 		return "warning"
 	case todotype.SeverityError:

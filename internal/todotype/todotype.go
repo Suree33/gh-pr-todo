@@ -90,7 +90,7 @@ func (p Policy) CountCIFailing(todos []types.TODO) int {
 	return n
 }
 
-// defaultPolicy is a cached immutable Policy reused by the package-level
+// defaultPolicy is a cached shared Policy used by the package-level
 // wrappers to avoid rebuilding maps on every call. DefaultPolicy() still
 // returns a fresh copy for callers who need a configurable instance.
 var defaultPolicy = DefaultPolicy()

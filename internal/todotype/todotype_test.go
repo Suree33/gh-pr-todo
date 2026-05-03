@@ -1,6 +1,7 @@
 package todotype
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/Suree33/gh-pr-todo/pkg/types"
@@ -305,4 +306,50 @@ func TestSeverityErrorConstant(t *testing.T) {
 	if SeverityError != "error" {
 		t.Fatalf("SeverityError = %q, want 'error'", SeverityError)
 	}
+}
+
+func TestDefaultTypes(t *testing.T) {
+	got := DefaultTypes()
+	want := []string{"BUG", "FIXME", "HACK", "NOTE", "TODO", "XXX"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("DefaultTypes() = %v, want %v", got, want)
+	}
+	// Ensure returned slice is a copy (mutating it should not affect global)
+	got[0] = "CHANGED"
+	if DefaultTypes()[0] == "CHANGED" {
+		t.Fatal("DefaultTypes() should return a fresh copy")
+	}
+}
+
+func TestPolicyTypes(t *testing.T) {
+	t.Run("default policy returns built-in types", func(t *testing.T) {
+		p := DefaultPolicy()
+		got := p.Types()
+		want := []string{"BUG", "FIXME", "HACK", "NOTE", "TODO", "XXX"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("Types() = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("custom severity type appears in Types", func(t *testing.T) {
+		p := DefaultPolicy().WithSeverity("REVIEW", SeverityWarning)
+		got := p.Types()
+		want := []string{"BUG", "FIXME", "HACK", "NOTE", "REVIEW", "TODO", "XXX"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("Types() = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("multiple custom types", func(t *testing.T) {
+		p := DefaultPolicy().WithSeverities(map[string]Severity{
+			"SECURITY": SeverityError,
+			"PERF":     SeverityWarning,
+		})
+		got := p.Types()
+		want := []string{"BUG", "FIXME", "HACK", "NOTE", "PERF", "SECURITY", "TODO", "XXX"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("Types() = %v, want %v", got, want)
+		}
+	})
+
 }

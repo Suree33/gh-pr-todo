@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/Suree33/gh-pr-todo/compare/v1.0.0...v1.0.1) (2026-05-03)
+
+
+### Bug Fixes
+
+* **todo-type:** fail only on warning-level TODOs in CI ([d85df97](https://github.com/Suree33/gh-pr-todo/commit/d85df97c36d3f9d3d3c0136cee52940549aa45bd))
+
 ## [1.0.0](https://github.com/Suree33/gh-pr-todo/compare/v0.5.2...v1.0.0) (2026-05-02)
 
 

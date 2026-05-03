@@ -72,18 +72,18 @@ gh pr-todo --group-by file
 - `--name-only`: Display only names of the files containing TODO comments
 - `-c, --count`: Display only the number of TODO comments
 - `-h, --help`: Display help information
-- `--no-ci-fail`: Disable non-zero exit when warning-level TODOs (FIXME/HACK/XXX/BUG) are found in CI (see below)
+- `--no-ci-fail`: Disable non-zero exit when error-level TODOs are found in CI (see below)
 
 ### CI Mode
 
-When the `CI` environment variable is truthy (e.g. `1`, `true`, parsed via Go's `strconv.ParseBool`), `gh pr-todo` exits with status `1` if any **warning-level** TODO-style comments (`FIXME`, `HACK`, `XXX`, `BUG`) are detected in the PR diff. Notice-level keywords (`TODO`, `NOTE`) do **not** cause a non-zero exit, matching the GitHub Actions annotation severity below. `GITHUB_ACTIONS=true` (set by the GitHub Actions runner) is treated as `CI=true` even when `CI` is missing or falsy.
+When the `CI` environment variable is truthy (e.g. `1`, `true`, parsed via Go's `strconv.ParseBool`), `gh pr-todo` exits with status `1` if any **error-level** TODO-style comments are detected in the PR diff. By default, no built-in keyword type is mapped to error-level, so `gh pr-todo` does **not** fail CI based on default keywords alone. Users can configure custom type-to-severity mappings in future releases to introduce error-level types. `GITHUB_ACTIONS=true` (set by the GitHub Actions runner) is treated as `CI=true` even when `CI` is missing or falsy.
 
 ```yaml
 # GitHub Actions example — CI=true is set automatically
 - run: gh pr-todo ${{ github.event.pull_request.number }}
 ```
 
-Pass `--no-ci-fail` to keep the informational behavior even in CI:
+Pass `--no-ci-fail` to suppress non-zero exit even when error-level TODOs exist:
 
 ```bash
 gh pr-todo --count --no-ci-fail
@@ -95,6 +95,8 @@ When `GITHUB_ACTIONS=true` (set automatically by the GitHub Actions runner), `gh
 
 - `TODO`, `NOTE` → `::notice` annotations
 - `FIXME`, `HACK`, `XXX`, `BUG` → `::warning` annotations
+
+Annotations reflect the severity of each keyword and are independent of CI exit behavior: warning annotations are displayed but do **not** cause a non-zero exit by default. Only error-level TODOs (none by default) cause CI failure.
 
 Each annotation is anchored to the file and line of the TODO, with the keyword used as the annotation title. Regular human-readable output is still printed, and the spinner is suppressed to keep Actions logs clean.
 

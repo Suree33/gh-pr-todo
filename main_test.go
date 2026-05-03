@@ -460,7 +460,7 @@ func TestRunFunctionsEmitWorkflowCommands(t *testing.T) {
 		out, _, _ := captureAll(t, func() {
 			_, _ = runMain(fetcher, "o/r", "1", types.GroupByNone, false)
 		})
-		if strings.Contains(out, "::notice ") || strings.Contains(out, "::warning ") {
+		if strings.Contains(out, "::notice ") || strings.Contains(out, "::warning ") || strings.Contains(out, "::error ") {
 			t.Fatalf("runMain(gha=false) unexpectedly emitted workflow command: %q", out)
 		}
 	})
@@ -470,7 +470,7 @@ func TestRunFunctionsEmitWorkflowCommands(t *testing.T) {
 		out, _, _ := captureAll(t, func() {
 			_, _ = runCount(fetcher, "o/r", "1")
 		})
-		if strings.Contains(out, "::notice") || strings.Contains(out, "::warning") {
+		if strings.Contains(out, "::notice") || strings.Contains(out, "::warning") || strings.Contains(out, "::error") {
 			t.Fatalf("runCount must not emit workflow commands; got %q", out)
 		}
 	})
@@ -480,7 +480,7 @@ func TestRunFunctionsEmitWorkflowCommands(t *testing.T) {
 		out, _, _ := captureAll(t, func() {
 			_, _ = runNameOnly(fetcher, "o/r", "1")
 		})
-		if strings.Contains(out, "::notice") || strings.Contains(out, "::warning") {
+		if strings.Contains(out, "::notice") || strings.Contains(out, "::warning") || strings.Contains(out, "::error") {
 			t.Fatalf("runNameOnly must not emit workflow commands; got %q", out)
 		}
 	})
@@ -560,10 +560,10 @@ index 0000000..1111111 100644
 			wantCIFailing: 0,
 		},
 		{
-			name:          "notice and warning TODOs returns 1",
+			name:          "notice and warning TODOs returns 0 CI failures (warning is not error)",
 			fetcher:       &stubFetcher{diff: twoTODOsDiff, files: twoTODOsFiles},
 			wantTotal:     2,
-			wantCIFailing: 1,
+			wantCIFailing: 0,
 		},
 	}
 
@@ -689,7 +689,7 @@ func TestPrintUsage(t *testing.T) {
 	pflag.BoolVar(&nameOnly, "name-only", false, "Display only names of the files containing TODO comments")
 	pflag.BoolVarP(&isCount, "count", "c", false, "Display only the number of TODO comments")
 	pflag.BoolVarP(&isHelp, "help", "h", false, "Display help information")
-	pflag.BoolVar(&noCIFail, "no-ci-fail", false, "Disable non-zero exit when warning-level TODOs (FIXME/HACK/XXX/BUG) are found in CI")
+	pflag.BoolVar(&noCIFail, "no-ci-fail", false, "Disable non-zero exit when error-level TODOs are found in CI")
 	pflag.Var(&groupBy, "group-by", "Group TODO comments by: \"file\" or \"type\"")
 
 	var out string
@@ -720,9 +720,10 @@ func TestPrintUsage(t *testing.T) {
 		"ENVIRONMENT",
 		"CI",
 		"GITHUB_ACTIONS",
-		"warning-level TODO (FIXME/HACK/XXX/BUG)",
-		"Notice-only keywords (TODO, NOTE)",
-		"(FIXME/HACK/XXX/BUG) are found in CI",
+		"error-level TODO is found.",
+		"By default, no built-in",
+		"keyword maps to error-level",
+		"--no-ci-fail",
 	}
 	for _, want := range wantContain {
 		if !strings.Contains(out, want) {

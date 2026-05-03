@@ -3,6 +3,7 @@ package output
 import (
 	"testing"
 
+	"github.com/Suree33/gh-pr-todo/internal/todotype"
 	"github.com/Suree33/gh-pr-todo/pkg/types"
 )
 
@@ -118,6 +119,26 @@ func TestWorkflowCommandFor(t *testing.T) {
 		t.Run(tt.todoType, func(t *testing.T) {
 			if got := workflowCommandFor(tt.todoType); got != tt.want {
 				t.Fatalf("workflowCommandFor(%q) = %q, want %q", tt.todoType, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWorkflowCommand(t *testing.T) {
+	tests := []struct {
+		name     string
+		severity todotype.Severity
+		want     string
+	}{
+		{name: "notice", severity: todotype.SeverityNotice, want: "notice"},
+		{name: "warning", severity: todotype.SeverityWarning, want: "warning"},
+		{name: "error", severity: todotype.SeverityError, want: "error"},
+		{name: "unknown falls back to notice", severity: todotype.Severity("unexpected"), want: "notice"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := workflowCommand(tt.severity); got != tt.want {
+				t.Fatalf("workflowCommand(%q) = %q, want %q", tt.severity, got, tt.want)
 			}
 		})
 	}

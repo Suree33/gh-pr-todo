@@ -87,13 +87,82 @@ func discoverRepoRoot(cwd string) (string, bool) {
 	return "", false
 }
 
+// DefaultConfigYAML returns the default configuration YAML content matching
+// the runtime default severity policy.
+func DefaultConfigYAML() []byte {
+	return []byte(`severity:
+  notice:
+    - TODO
+    - NOTE
+  warning:
+    - FIXME
+    - HACK
+    - XXX
+    - BUG
+  error: []
+`)
+}
+
+// GlobalPath returns the global config file path for the given user config
+// directory. Returns an error if userConfigDir is empty.
+func GlobalPath(userConfigDir string) (string, error) {
+	if userConfigDir == "" {
+		return "", fmt.Errorf("user config directory is empty")
+	}
+	return filepath.Join(userConfigDir, "gh-pr-todo", "config.yml"), nil
+}
+
+// RepoNarrowPath returns the path to .github/gh-pr-todo.yml at the root of
+// the repository containing cwd. Returns an error if cwd is not inside a
+// Git repository.
+func RepoNarrowPath(cwd string) (string, error) {
+	repoRoot, found := discoverRepoRoot(cwd)
+	if !found {
+		return "", fmt.Errorf("not inside a Git repository")
+	}
+	return filepath.Join(repoRoot, ".github", "gh-pr-todo.yml"), nil
+}
+
+// WriteDefault writes the default config YAML to path. If force is false,
+// it refuses to overwrite an existing file. Parent directories are created
+// as needed.
+func WriteDefault(path string, force bool) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("creating directory for %s: %w", path, err)
+	}
+
+	flags := os.O_WRONLY | os.O_CREATE
+	if force {
+		flags |= os.O_TRUNC
+	} else {
+		flags |= os.O_EXCL
+	}
+
+	f, err := os.OpenFile(path, flags, 0644)
+	if err != nil {
+		if os.IsExist(err) {
+			return fmt.Errorf("%s already exists; use --force to overwrite", path)
+		}
+		return fmt.Errorf("creating %s: %w", path, err)
+	}
+
+	if _, err := f.Write(DefaultConfigYAML()); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("writing %s: %w", path, err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("closing %s: %w", path, err)
+	}
+	return nil
+}
+
 // LoadGlobal loads the user-level config file.
 func LoadGlobal(userConfigDir string) (Config, error) {
 	merged := Config{Severities: make(map[string]todotype.Severity)}
-	if userConfigDir == "" {
+	globalPath, err := GlobalPath(userConfigDir)
+	if err != nil {
 		return merged, nil
 	}
-	globalPath := filepath.Join(userConfigDir, "gh-pr-todo", "config.yml")
 	if err := mergeFile(globalPath, &merged); err != nil {
 		return merged, err
 	}

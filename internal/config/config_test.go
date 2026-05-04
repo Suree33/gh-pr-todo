@@ -170,6 +170,172 @@ func TestParse(t *testing.T) {
 	})
 }
 
+func TestDefaultConfigYAMLParsesToRuntimeDefaults(t *testing.T) {
+	t.Run("default YAML parses without error", func(t *testing.T) {
+		data := DefaultConfigYAML()
+		cfg, err := Parse(data, "default")
+		if err != nil {
+			t.Fatalf("Parse(DefaultConfigYAML()) unexpected error: %v", err)
+		}
+
+		// TODO and NOTE should be notice
+		if cfg.Severities["TODO"] != todotype.SeverityNotice {
+			t.Fatalf("expected TODO=notice, got %v", cfg.Severities["TODO"])
+		}
+		if cfg.Severities["NOTE"] != todotype.SeverityNotice {
+			t.Fatalf("expected NOTE=notice, got %v", cfg.Severities["NOTE"])
+		}
+
+		// FIXME, HACK, XXX, BUG should be warning
+		for _, typ := range []string{"FIXME", "HACK", "XXX", "BUG"} {
+			if cfg.Severities[typ] != todotype.SeverityWarning {
+				t.Fatalf("expected %s=warning, got %v", typ, cfg.Severities[typ])
+			}
+		}
+
+		// No type should have error severity
+		for typ, sev := range cfg.Severities {
+			if sev == todotype.SeverityError {
+				t.Fatalf("expected no error-level types in default, but %s is error", typ)
+			}
+		}
+	})
+}
+
+func TestGlobalPath(t *testing.T) {
+	t.Run("empty userConfigDir returns error", func(t *testing.T) {
+		_, err := GlobalPath("")
+		if err == nil {
+			t.Fatal("GlobalPath(\"\") expected error")
+		}
+	})
+
+	t.Run("valid userConfigDir returns path", func(t *testing.T) {
+		dir := t.TempDir()
+		path, err := GlobalPath(dir)
+		if err != nil {
+			t.Fatalf("GlobalPath(%q) unexpected error: %v", dir, err)
+		}
+		want := filepath.Join(dir, "gh-pr-todo", "config.yml")
+		if path != want {
+			t.Fatalf("GlobalPath(%q) = %q, want %q", dir, path, want)
+		}
+	})
+}
+
+func TestRepoNarrowPath(t *testing.T) {
+	t.Run("non-repo directory errors", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		_, err := RepoNarrowPath(tmpDir)
+		if err == nil {
+			t.Fatal("RepoNarrowPath() expected error for non-repo directory")
+		}
+	})
+
+	t.Run("repo root returns .github/gh-pr-todo.yml", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(repoRoot, ".git"), 0755); err != nil {
+			t.Fatalf("MkdirAll() error: %v", err)
+		}
+		path, err := RepoNarrowPath(repoRoot)
+		if err != nil {
+			t.Fatalf("RepoNarrowPath() unexpected error: %v", err)
+		}
+		want := filepath.Join(repoRoot, ".github", "gh-pr-todo.yml")
+		if path != want {
+			t.Fatalf("RepoNarrowPath() = %q, want %q", path, want)
+		}
+	})
+
+	t.Run("nested subdirectory inside repo still returns root path", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(repoRoot, ".git"), 0755); err != nil {
+			t.Fatalf("MkdirAll() error: %v", err)
+		}
+		subdir := filepath.Join(repoRoot, "a", "b", "c")
+		if err := os.MkdirAll(subdir, 0755); err != nil {
+			t.Fatalf("MkdirAll() error: %v", err)
+		}
+		path, err := RepoNarrowPath(subdir)
+		if err != nil {
+			t.Fatalf("RepoNarrowPath() unexpected error: %v", err)
+		}
+		want := filepath.Join(repoRoot, ".github", "gh-pr-todo.yml")
+		if path != want {
+			t.Fatalf("RepoNarrowPath() = %q, want %q", path, want)
+		}
+	})
+}
+
+func TestWriteDefault(t *testing.T) {
+	t.Run("creates file and parent directories", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		path := filepath.Join(tmpDir, "subdir", "config.yml")
+		if err := WriteDefault(path, false); err != nil {
+			t.Fatalf("WriteDefault() unexpected error: %v", err)
+		}
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("expected file to exist at %s: %v", path, err)
+		}
+		// Verify content is valid YAML
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("ReadFile() error: %v", err)
+		}
+		if _, err := Parse(data, path); err != nil {
+			t.Fatalf("Parse(written content) error: %v", err)
+		}
+	})
+
+	t.Run("refuses to overwrite without force", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		path := filepath.Join(tmpDir, "config.yml")
+		if err := WriteDefault(path, false); err != nil {
+			t.Fatalf("first WriteDefault() unexpected error: %v", err)
+		}
+		err := WriteDefault(path, false)
+		if err == nil {
+			t.Fatal("WriteDefault() without force expected error for existing file")
+		}
+		if !strings.Contains(err.Error(), "--force") {
+			t.Fatalf("WriteDefault() error = %q, expected to mention --force", err.Error())
+		}
+		// Content should be preserved
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("ReadFile() error: %v", err)
+		}
+		if _, err := Parse(data, path); err != nil {
+			t.Fatalf("Parse(preserved content) error: %v", err)
+		}
+	})
+
+	t.Run("overwrites with force", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		path := filepath.Join(tmpDir, "config.yml")
+		// Write original content
+		if err := os.WriteFile(path, []byte("original"), 0644); err != nil {
+			t.Fatalf("WriteFile() error: %v", err)
+		}
+		// Overwrite with force
+		if err := WriteDefault(path, true); err != nil {
+			t.Fatalf("WriteDefault(force=true) unexpected error: %v", err)
+		}
+		// Content should be the default YAML now
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("ReadFile() error: %v", err)
+		}
+		cfg, err := Parse(data, path)
+		if err != nil {
+			t.Fatalf("Parse(overwritten content) error: %v", err)
+		}
+		if cfg.Severities["TODO"] != todotype.SeverityNotice {
+			t.Fatalf("expected TODO=notice in overwritten file, got %v", cfg.Severities["TODO"])
+		}
+	})
+}
+
 func TestLoadGlobal(t *testing.T) {
 	t.Run("empty user config dir is treated as no global config", func(t *testing.T) {
 		cfg, err := LoadGlobal("")

@@ -79,6 +79,40 @@ gh pr-todo --severity warning=TODO,HACK --severity error=FIXME
 - `-h, --help`: Display help information
 - `--no-ci-fail`: Disable non-zero exit when error-level TODOs are found in CI (see below)
 
+### Initializing Configuration
+
+Use `gh pr-todo init` to create a default configuration file interactively:
+
+```bash
+gh pr-todo init
+```
+
+You will be prompted to choose a location for the config file:
+
+1. `.github/gh-pr-todo.yml` — repository-scoped config, created at the root of the current Git repository
+2. User config directory — global config, shared across all repos (typically `$XDG_CONFIG_HOME/gh-pr-todo/config.yml` on Linux, falling back to `~/.config/gh-pr-todo/config.yml`; actual path depends on your OS)
+
+If a config file already exists, `init` refuses to overwrite it unless `--force` is passed:
+
+```bash
+gh pr-todo init --force
+```
+
+The default configuration matches the runtime severity policy:
+
+```yaml
+severity:
+  notice:
+    - TODO
+    - NOTE
+  warning:
+    - FIXME
+    - HACK
+    - XXX
+    - BUG
+  error: []
+```
+
 ### Configuration File
 
 Severity overrides can be persisted in YAML configuration files. Config files use the following schema:

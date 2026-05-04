@@ -23,8 +23,8 @@ import (
 )
 
 func registerFlags(fs *pflag.FlagSet, repo *string, nameOnly, isCount, isHelp, noCIFail *bool, groupBy *types.GroupBy, sevFlag *severityFlag, ignoreFlag *ignoreFlag) {
-	fs.StringVarP(repo, "repo", "R", "", "Select another repository using the [HOST/]OWNER/REPO format")
-	fs.BoolVar(nameOnly, "name-only", false, "Display only names of the files containing TODO-style comments")
+	fs.StringVarP(repo, "repo", "R", "", "Select another repository using the [HOST/]OWNER/REPO format; requires a PR number, URL, or branch argument")
+	fs.BoolVar(nameOnly, "name-only", false, "Display only names of the files containing TODO-style comments; takes precedence over --count")
 	fs.BoolVarP(isCount, "count", "c", false, "Display only the number of TODO-style comments")
 	fs.BoolVarP(isHelp, "help", "h", false, "Display help information")
 	fs.BoolVar(noCIFail, "no-ci-fail", false, "Disable non-zero exit when error-level TODOs are found in CI")
@@ -406,6 +406,8 @@ func printUsage() {
 	fmt.Fprintf(color.Output, "  %s\n", "GITHUB_ACTIONS   When truthy, emits GitHub Actions workflow annotations.")
 	fmt.Fprintf(color.Output, "  %s\n", "                 Implies CI=true; --no-ci-fail suppresses error-level exits.")
 	fmt.Fprintf(color.Output, "  %s\n\n", "                 Only emitted in the default mode; --count and --name-only stay machine-readable.")
+	fmt.Fprintf(color.Output, "%s\n", output.Bold("OUTPUT MODES"))
+	fmt.Fprintf(color.Output, "  %s\n\n", "If --name-only and --count are both specified, --name-only takes precedence.")
 	fmt.Fprintf(color.Output, "%s\n", output.Bold("SEVERITY OVERRIDES"))
 	fmt.Fprintf(color.Output, "  %s\n", "Use --severity LEVEL=TYPE[,TYPE...] to override severities.")
 	fmt.Fprintf(color.Output, "  %s\n", "Affects workflow annotation levels and CI exits for error-level types.")
@@ -436,7 +438,14 @@ func printUsage() {
 	fmt.Fprintf(color.Output, "  %s\n", "  3. remote default branch config")
 	fmt.Fprintf(color.Output, "  %s\n", "  4. global config (fallback only when no remote config exists)")
 	fmt.Fprintf(color.Output, "  %s\n", "  5. CLI --severity and --ignore flags (highest priority)")
-	fmt.Fprintf(color.Output, "  %s\n\n", "Example config:  # .gh-pr-todo.yml\nseverity:\n  warning:\n    - TODO\n  error:\n    - FIXME\nignore:\n  - NOTE")
+	fmt.Fprintf(color.Output, "  %s\n", "Example config:  # .gh-pr-todo.yml")
+	fmt.Fprintf(color.Output, "  %s\n", "severity:")
+	fmt.Fprintf(color.Output, "  %s\n", "  warning:")
+	fmt.Fprintf(color.Output, "  %s\n", "    - TODO")
+	fmt.Fprintf(color.Output, "  %s\n", "  error:")
+	fmt.Fprintf(color.Output, "  %s\n", "    - FIXME")
+	fmt.Fprintf(color.Output, "  %s\n", "ignore:")
+	fmt.Fprintf(color.Output, "  %s\n\n", "  - NOTE")
 }
 
 func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy, gha bool, policy todotype.Policy) (runResult, error) {

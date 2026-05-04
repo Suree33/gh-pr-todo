@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Suree33/gh-pr-todo/internal/todotype"
@@ -66,7 +67,7 @@ func TestLoadRemote(t *testing.T) {
 			},
 			fileContents: map[string]map[string][]byte{
 				"owner/repo:main": {
-					".github/gh-pr-todo.yml": []byte("severity:\n  TODO: warning\n"),
+					".github/gh-pr-todo.yml": []byte("severity:\n  warning:\n    - TODO\n"),
 				},
 			},
 		}
@@ -87,8 +88,8 @@ func TestLoadRemote(t *testing.T) {
 			},
 			fileContents: map[string]map[string][]byte{
 				"owner/repo:main": {
-					".gh-pr-todo.yml":        []byte("severity:\n  TODO: notice\n"),
-					".github/gh-pr-todo.yml": []byte("severity:\n  TODO: warning\n"),
+					".gh-pr-todo.yml":        []byte("severity:\n  notice:\n    - TODO\n"),
+					".github/gh-pr-todo.yml": []byte("severity:\n  warning:\n    - TODO\n"),
 				},
 			},
 		}
@@ -114,13 +115,13 @@ func TestLoadRemote(t *testing.T) {
 			},
 			fileContents: map[string]map[string][]byte{
 				"owner/repo:main": {
-					".github/gh-pr-todo.yml": []byte("severity:\n  TODO: notice\n"),
+					".github/gh-pr-todo.yml": []byte("severity:\n  notice:\n    - TODO\n"),
 				},
 				"owner/repo:release": {
-					".github/gh-pr-todo.yml": []byte("severity:\n  TODO: warning\n"),
+					".github/gh-pr-todo.yml": []byte("severity:\n  warning:\n    - TODO\n"),
 				},
 				"forkuser/repo:abc123": {
-					".github/gh-pr-todo.yml": []byte("severity:\n  TODO: error\n"),
+					".github/gh-pr-todo.yml": []byte("severity:\n  error:\n    - TODO\n"),
 				},
 			},
 		}
@@ -156,7 +157,7 @@ func TestLoadRemote(t *testing.T) {
 			},
 			fileContents: map[string]map[string][]byte{
 				"owner/repo:main": {
-					".github/gh-pr-todo.yml": []byte("severity:\n  TODO: invalid\n"),
+					".github/gh-pr-todo.yml": []byte("severity:\n  critical:\n    - TODO\n"),
 				},
 			},
 		}
@@ -164,7 +165,7 @@ func TestLoadRemote(t *testing.T) {
 		if err == nil {
 			t.Fatal("LoadRemote() expected error, got nil")
 		}
-		if got := err.Error(); !contains(got, "owner/repo:main:.github/gh-pr-todo.yml") || !contains(got, "invalid severity") {
+		if got := err.Error(); !strings.Contains(got, "owner/repo:main:.github/gh-pr-todo.yml") || !strings.Contains(got, "invalid severity key") {
 			t.Fatalf("LoadRemote() error = %q", got)
 		}
 	})
@@ -178,7 +179,7 @@ func TestLoadRemote(t *testing.T) {
 			},
 			fileContents: map[string]map[string][]byte{
 				"forkuser/repo:abc123": {
-					".github/gh-pr-todo.yml": []byte("severity:\n  TODO: error\n"),
+					".github/gh-pr-todo.yml": []byte("severity:\n  error:\n    - TODO\n"),
 				},
 			},
 		}

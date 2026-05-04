@@ -20,7 +20,7 @@ type Config struct {
 
 // File represents the YAML configuration file schema.
 type File struct {
-	Severity map[string]string `yaml:"severity"`
+	Severity map[string][]string `yaml:"severity"`
 }
 
 // Parse parses YAML config data and validates severity values.
@@ -35,16 +35,12 @@ func Parse(data []byte, source string) (Config, error) {
 		return Config{Severities: make(map[string]todotype.Severity)}, nil
 	}
 
-	severities := make(map[string]todotype.Severity, len(f.Severity))
-	for todoType, levelStr := range f.Severity {
-		normalizedType := strings.TrimSpace(todoType)
-		if normalizedType == "" {
-			return Config{}, fmt.Errorf("%s: type name is empty", source)
-		}
-		normalizedType = strings.ToUpper(normalizedType)
+	severities := make(map[string]todotype.Severity)
+	for levelStr, typeNames := range f.Severity {
+		normalizedLevel := strings.ToLower(strings.TrimSpace(levelStr))
 
 		var sev todotype.Severity
-		switch strings.ToLower(strings.TrimSpace(levelStr)) {
+		switch normalizedLevel {
 		case "notice":
 			sev = todotype.SeverityNotice
 		case "warning":
@@ -52,10 +48,23 @@ func Parse(data []byte, source string) (Config, error) {
 		case "error":
 			sev = todotype.SeverityError
 		default:
-			return Config{}, fmt.Errorf("%s: invalid severity %q for type %q: allowed values are notice, warning, error",
-				source, levelStr, todoType)
+			return Config{}, fmt.Errorf("%s: invalid severity key %q: allowed values are notice, warning, error",
+				source, levelStr)
 		}
-		severities[normalizedType] = sev
+
+		for _, typeName := range typeNames {
+			normalizedType := strings.TrimSpace(typeName)
+			if normalizedType == "" {
+				return Config{}, fmt.Errorf("%s: type name is empty in severity %q", source, normalizedLevel)
+			}
+			normalizedType = strings.ToUpper(normalizedType)
+
+			if existingSev, exists := severities[normalizedType]; exists && existingSev != sev {
+				return Config{}, fmt.Errorf("%s: type %q appears under multiple severity levels (%s and %s)",
+					source, normalizedType, existingSev, sev)
+			}
+			severities[normalizedType] = sev
+		}
 	}
 
 	return Config{Severities: severities}, nil

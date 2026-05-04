@@ -302,7 +302,8 @@ func printUsage() {
 	fmt.Fprintf(color.Output, "%s\n", output.Bold("CONFIGURATION"))
 	fmt.Fprintf(color.Output, "  %s\n", "Severity overrides can be configured in YAML config files.")
 	fmt.Fprintf(color.Output, "  %s\n", "Configured custom types are detected alongside the built-in markers.")
-	fmt.Fprintf(color.Output, "  %s\n", "Schema: severity:\n    TYPE: notice|warning|error")
+	fmt.Fprintf(color.Output, "  %s\n", "Schema: severity:\n    notice|warning|error: [TYPE...]")
+	fmt.Fprintf(color.Output, "  %s\n", "Empty lists are allowed and ignored; a type may not appear under multiple severity levels.")
 	fmt.Fprintf(color.Output, "  %s\n", "Config file paths and precedence (later wins):")
 	fmt.Fprintf(color.Output, "  %s\n", "  1. user config dir/gh-pr-todo/config.yml (global)")
 	fmt.Fprintf(color.Output, "  %s\n", "  2. <repo>/.gh-pr-todo.yml (repo root)")
@@ -315,7 +316,7 @@ func printUsage() {
 	fmt.Fprintf(color.Output, "  %s\n", "  3. remote PR base branch config")
 	fmt.Fprintf(color.Output, "  %s\n", "  4. remote PR head branch config")
 	fmt.Fprintf(color.Output, "  %s\n", "  5. CLI --severity flag (highest priority)")
-	fmt.Fprintf(color.Output, "  %s\n\n", "Example config:\n# .github/gh-pr-todo.yml\nseverity:\n  TODO: warning\n  FIXME: error")
+	fmt.Fprintf(color.Output, "  %s\n\n", "Example config:\n# .github/gh-pr-todo.yml\nseverity:\n  warning:\n    - TODO\n  error:\n    - FIXME")
 }
 
 func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy, gha bool, policy todotype.Policy) (runResult, error) {

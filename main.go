@@ -550,25 +550,41 @@ func chooseInitPathInteractive(in io.Reader, out io.Writer, repoPath string, rep
 func initPathOptions(repoPath string, repoErr error, globalPath string, globalErr error) []huh.Option[string] {
 	options := make([]huh.Option[string], 0, 2)
 	if repoErr == nil {
-		options = append(options, huh.NewOption(".gh-pr-todo.yml", repoPath))
+		options = append(options, huh.NewOption(initProjectLabel(), repoPath))
 	}
 	if globalErr == nil && globalPath != "" {
-		options = append(options, huh.NewOption(globalPath, globalPath))
+		options = append(options, huh.NewOption(initGlobalLabel(globalPath), globalPath))
 	}
 	return options
+}
+
+func initProjectLabel() string {
+	return "Project (.gh-pr-todo.yml)"
+}
+
+func initGlobalLabel(path string) string {
+	return fmt.Sprintf("Global (%s)", path)
+}
+
+func initProjectUnavailableLabel() string {
+	return "Project (unavailable: not inside a Git repository)"
+}
+
+func initGlobalUnavailableLabel() string {
+	return "Global (unavailable: user config directory not available)"
 }
 
 func chooseInitPathText(in io.Reader, out io.Writer, repoPath string, repoErr error, globalPath string, globalErr error) (string, error) {
 	fmt.Fprintln(out, "Choose config file location:")
 	if repoErr == nil {
-		fmt.Fprintln(out, "  1) .gh-pr-todo.yml")
+		fmt.Fprintf(out, "  1) %s\n", initProjectLabel())
 	} else {
-		fmt.Fprintln(out, "  1) .gh-pr-todo.yml (requires a Git repository)")
+		fmt.Fprintf(out, "  1) %s\n", initProjectUnavailableLabel())
 	}
-	if globalErr == nil {
-		fmt.Fprintf(out, "  2) %s\n", globalPath)
+	if globalErr == nil && globalPath != "" {
+		fmt.Fprintf(out, "  2) %s\n", initGlobalLabel(globalPath))
 	} else {
-		fmt.Fprintln(out, "  2) user config directory not available")
+		fmt.Fprintf(out, "  2) %s\n", initGlobalUnavailableLabel())
 	}
 	fmt.Fprint(out, "Enter selection: ")
 
@@ -629,10 +645,10 @@ func printInitUsage(fs *pflag.FlagSet) {
 	fmt.Fprintf(color.Output, "%s\n", output.Bold("DESCRIPTION"))
 	fmt.Fprintf(color.Output, "  %s\n", "Creates a default configuration file with an interactive terminal selector or a plain text prompt when redirected.")
 	fmt.Fprintf(color.Output, "  %s\n", "Available locations:")
-	fmt.Fprintf(color.Output, "  %s\n", "  - .gh-pr-todo.yml (repository scope; shown interactively only inside a Git repository)")
-	fmt.Fprintf(color.Output, "  %s\n", "  - user config dir/gh-pr-todo/config.yml (global scope)")
+	fmt.Fprintf(color.Output, "  %s\n", "  - Project (.gh-pr-todo.yml): repository scope; shown interactively only inside a Git repository")
+	fmt.Fprintf(color.Output, "  %s\n", "  - Global (user config dir/gh-pr-todo/config.yml): global scope")
 	fmt.Fprintf(color.Output, "  %s\n", "")
-	fmt.Fprintf(color.Output, "  %s\n", "Use --force to overwrite an existing .gh-pr-todo.yml file.")
+	fmt.Fprintf(color.Output, "  %s\n", "Use --force to overwrite an existing project or global config file.")
 	fmt.Fprintf(color.Output, "  %s\n", "If you choose repo scope and .github/gh-pr-todo.yml exists, move or remove it first because it takes precedence.")
 	fmt.Fprintln(color.Output)
 }

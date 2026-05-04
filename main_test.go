@@ -1277,8 +1277,15 @@ func TestInitPathOptions(t *testing.T) {
 		if len(options) != 2 {
 			t.Fatalf("len(options) = %d, want 2", len(options))
 		}
+		if options[0].Key != "Project (.gh-pr-todo.yml)" {
+			t.Fatalf("first option label = %q, want Project label", options[0].Key)
+		}
 		if options[0].Value != repoPath {
 			t.Fatalf("first option = %q, want repo path %q", options[0].Value, repoPath)
+		}
+		wantGlobalLabel := "Global (" + globalPath + ")"
+		if options[1].Key != wantGlobalLabel {
+			t.Fatalf("second option label = %q, want %q", options[1].Key, wantGlobalLabel)
 		}
 		if options[1].Value != globalPath {
 			t.Fatalf("second option = %q, want global path %q", options[1].Value, globalPath)
@@ -1292,6 +1299,41 @@ func TestInitPathOptions(t *testing.T) {
 		}
 		if options[0].Value != globalPath {
 			t.Fatalf("only option = %q, want global path %q", options[0].Value, globalPath)
+		}
+	})
+}
+
+func TestChooseInitPathTextLabels(t *testing.T) {
+	repoPath := filepath.Join("repo", ".gh-pr-todo.yml")
+	globalPath := filepath.Join("config", "gh-pr-todo", "config.yml")
+
+	t.Run("available locations include scoped labels", func(t *testing.T) {
+		var buf bytes.Buffer
+		_, err := chooseInitPathText(strings.NewReader("1\n"), &buf, repoPath, nil, globalPath, nil)
+		if err != nil {
+			t.Fatalf("chooseInitPathText() unexpected error: %v", err)
+		}
+		output := buf.String()
+		if !strings.Contains(output, "1) Project (.gh-pr-todo.yml)") {
+			t.Fatalf("output = %q, expected project label", output)
+		}
+		if !strings.Contains(output, "2) Global ("+globalPath+")") {
+			t.Fatalf("output = %q, expected global label", output)
+		}
+	})
+
+	t.Run("unavailable locations include scoped messages", func(t *testing.T) {
+		var buf bytes.Buffer
+		_, err := chooseInitPathText(strings.NewReader(""), &buf, repoPath, errors.New("not inside a Git repository"), globalPath, errors.New("user config directory is empty"))
+		if err == nil {
+			t.Fatal("chooseInitPathText() expected input error")
+		}
+		output := buf.String()
+		if !strings.Contains(output, "1) Project (unavailable: not inside a Git repository)") {
+			t.Fatalf("output = %q, expected unavailable project label", output)
+		}
+		if !strings.Contains(output, "2) Global (unavailable: user config directory not available)") {
+			t.Fatalf("output = %q, expected unavailable global label", output)
 		}
 	})
 }

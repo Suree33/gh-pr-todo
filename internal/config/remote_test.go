@@ -80,7 +80,7 @@ func TestLoadRemote(t *testing.T) {
 		}
 	})
 
-	t.Run("both paths loaded within scope", func(t *testing.T) {
+	t.Run(".github/gh-pr-todo.yml replaces .gh-pr-todo.yml within same scope", func(t *testing.T) {
 		fetcher := &fakeFetcher{
 			refs: RemoteConfigRefs{
 				DefaultBranchRef: "main",
@@ -97,13 +97,39 @@ func TestLoadRemote(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LoadRemote() unexpected error: %v", err)
 		}
-		// .github/gh-pr-todo.yml wins within same scope
+		// .github/gh-pr-todo.yml replaces .gh-pr-todo.yml within scope
+		if cfg.Severities["TODO"] != todotype.SeverityWarning {
+			t.Fatalf("expected TODO=warning (.github wins), got %v", cfg.Severities)
+		}
+		// TODO=notice from .gh-pr-todo.yml should NOT survive
+		if len(cfg.Severities) != 1 {
+			t.Fatalf("expected exactly 1 severity (TODO=warning), got %v", cfg.Severities)
+		}
+	})
+
+	t.Run("valid .github config replaces invalid broad config within same scope", func(t *testing.T) {
+		fetcher := &fakeFetcher{
+			refs: RemoteConfigRefs{
+				DefaultBranchRef: "main",
+				DefaultRepo:      "owner/repo",
+			},
+			fileContents: map[string]map[string][]byte{
+				"owner/repo:main": {
+					".gh-pr-todo.yml":        []byte("severity:\n  critical:\n    - TODO\n"),
+					".github/gh-pr-todo.yml": []byte("severity:\n  warning:\n    - TODO\n"),
+				},
+			},
+		}
+		cfg, err := LoadRemote(fetcher, "owner/repo", "")
+		if err != nil {
+			t.Fatalf("LoadRemote() unexpected error: %v", err)
+		}
 		if cfg.Severities["TODO"] != todotype.SeverityWarning {
 			t.Fatalf("expected TODO=warning (.github wins), got %v", cfg.Severities)
 		}
 	})
 
-	t.Run("PR base overrides default, PR head overrides base", func(t *testing.T) {
+	t.Run("PR head replaces base replaces default (whole config)", func(t *testing.T) {
 		fetcher := &fakeFetcher{
 			refs: RemoteConfigRefs{
 				DefaultBranchRef: "main",
@@ -115,7 +141,7 @@ func TestLoadRemote(t *testing.T) {
 			},
 			fileContents: map[string]map[string][]byte{
 				"owner/repo:main": {
-					".github/gh-pr-todo.yml": []byte("severity:\n  notice:\n    - TODO\n"),
+					".github/gh-pr-todo.yml": []byte("severity:\n  notice:\n    - TODO\n  warning:\n    - FIXME\n"),
 				},
 				"owner/repo:release": {
 					".github/gh-pr-todo.yml": []byte("severity:\n  warning:\n    - TODO\n"),
@@ -129,9 +155,42 @@ func TestLoadRemote(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LoadRemote() unexpected error: %v", err)
 		}
-		// Head wins
+		// Head replaces base which replaced default: only TODO=error, no FIXME
 		if cfg.Severities["TODO"] != todotype.SeverityError {
 			t.Fatalf("expected TODO=error (head wins), got %v", cfg.Severities)
+		}
+		// FIXME from default should NOT survive head replacement
+		if _, exists := cfg.Severities["FIXME"]; exists {
+			t.Fatalf("FIXME should not survive head replacement, but got %v", cfg.Severities["FIXME"])
+		}
+		if len(cfg.Severities) != 1 {
+			t.Fatalf("expected exactly 1 severity (TODO=error), got %v", cfg.Severities)
+		}
+	})
+
+	t.Run("valid head config replaces invalid default config", func(t *testing.T) {
+		fetcher := &fakeFetcher{
+			refs: RemoteConfigRefs{
+				DefaultBranchRef: "main",
+				DefaultRepo:      "owner/repo",
+				HeadRefOid:       "abc123",
+				HeadRepo:         "forkuser/repo",
+			},
+			fileContents: map[string]map[string][]byte{
+				"owner/repo:main": {
+					".github/gh-pr-todo.yml": []byte("severity:\n  critical:\n    - TODO\n"),
+				},
+				"forkuser/repo:abc123": {
+					".github/gh-pr-todo.yml": []byte("severity:\n  error:\n    - TODO\n"),
+				},
+			},
+		}
+		cfg, err := LoadRemote(fetcher, "owner/repo", "42")
+		if err != nil {
+			t.Fatalf("LoadRemote() unexpected error: %v", err)
+		}
+		if cfg.Severities["TODO"] != todotype.SeverityError {
+			t.Fatalf("expected TODO=error from head config, got %v", cfg.Severities)
 		}
 	})
 

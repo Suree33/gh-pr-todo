@@ -2,8 +2,6 @@ package config
 
 import (
 	"fmt"
-
-	"github.com/Suree33/gh-pr-todo/internal/todotype"
 )
 
 // RemoteConfigFetcher is the interface for fetching remote config files
@@ -26,58 +24,56 @@ type RemoteConfigRefs struct {
 	HeadRepo         string // e.g. "forkuser/repo" (empty if no PR)
 }
 
-// LoadRemote loads and merges config files from remote repository references.
-// Precedence within remote config (later wins): default branch < PR base < PR head.
-// The caller is responsible for applying global config before this result and
-// CLI overrides after it. For each scope, .gh-pr-todo.yml is loaded first, then
-// .github/gh-pr-todo.yml (narrower path wins within each scope).
+// LoadRemote loads config files from remote repository references.
+// Precedence: PR head > PR base > default branch. Within each scope,
+// .github/gh-pr-todo.yml replaces .gh-pr-todo.yml entirely.
 func LoadRemote(fetcher RemoteConfigFetcher, repo, pr string) (Config, error) {
-	merged := Config{Severities: make(map[string]todotype.Severity)}
-
 	refs, err := fetcher.FetchRemoteConfigRefs(repo, pr)
 	if err != nil {
-		return merged, fmt.Errorf("fetching remote refs: %w", err)
+		return Config{}, fmt.Errorf("fetching remote refs: %w", err)
 	}
 
-	// Helper to try loading both config paths at a given ref
-	loadRef := func(repoName, ref, scope string) error {
-		for _, path := range []string{".gh-pr-todo.yml", ".github/gh-pr-todo.yml"} {
-			data, found, err := fetcher.FetchFileAtRef(repoName, path, ref)
+	candidates := []struct {
+		repo  string
+		ref   string
+		scope string
+	}{
+		{repo: refs.HeadRepo, ref: refs.HeadRefOid, scope: "head"},
+		{repo: refs.BaseRepo, ref: refs.BaseBranchRef, scope: "base"},
+		{repo: refs.DefaultRepo, ref: refs.DefaultBranchRef, scope: "default"},
+	}
+
+	for _, candidate := range candidates {
+		if candidate.repo == "" || candidate.ref == "" {
+			continue
+		}
+
+		cfg, found, err := loadRemoteRef(fetcher, candidate.repo, candidate.ref, candidate.scope)
+		if err != nil {
+			return Config{}, err
+		}
+		if found {
+			return cfg, nil
+		}
+	}
+
+	return Config{}, nil
+}
+
+func loadRemoteRef(fetcher RemoteConfigFetcher, repoName, ref, scope string) (Config, bool, error) {
+	for _, path := range []string{".github/gh-pr-todo.yml", ".gh-pr-todo.yml"} {
+		data, found, err := fetcher.FetchFileAtRef(repoName, path, ref)
+		if err != nil {
+			return Config{}, false, fmt.Errorf("fetching %s from %s at %s (%s): %w", path, repoName, ref, scope, err)
+		}
+		if found {
+			source := fmt.Sprintf("%s:%s:%s", repoName, ref, path)
+			cfg, err := Parse(data, source)
 			if err != nil {
-				return fmt.Errorf("fetching %s from %s at %s (%s): %w", path, repoName, ref, scope, err)
+				return Config{}, true, err
 			}
-			if found {
-				source := fmt.Sprintf("%s:%s:%s", repoName, ref, path)
-				cfg, err := Parse(data, source)
-				if err != nil {
-					return err
-				}
-				for k, v := range cfg.Severities {
-					merged.Severities[k] = v
-				}
-			}
-		}
-		return nil
-	}
-
-	// Precedence: default branch < PR base < PR head
-	if refs.DefaultBranchRef != "" && refs.DefaultRepo != "" {
-		if err := loadRef(refs.DefaultRepo, refs.DefaultBranchRef, "default"); err != nil {
-			return merged, err
+			return cfg, true, nil
 		}
 	}
-
-	if refs.BaseBranchRef != "" && refs.BaseRepo != "" {
-		if err := loadRef(refs.BaseRepo, refs.BaseBranchRef, "base"); err != nil {
-			return merged, err
-		}
-	}
-
-	if refs.HeadRefOid != "" && refs.HeadRepo != "" {
-		if err := loadRef(refs.HeadRepo, refs.HeadRefOid, "head"); err != nil {
-			return merged, err
-		}
-	}
-
-	return merged, nil
+	return Config{}, false, nil
 }

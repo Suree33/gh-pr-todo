@@ -51,6 +51,25 @@ func TestPrintWorkflowCommandsWithPolicy(t *testing.T) {
 	}
 }
 
+func TestPrintWorkflowCommandsSkipsIgnoredTypes(t *testing.T) {
+	policy := todotype.DefaultPolicy().WithSeverity("SECURITY", todotype.SeverityError).WithIgnoredTypes([]string{"NOTE", "SECURITY"})
+
+	todos := []types.TODO{
+		{Filename: "a.go", Line: 5, Comment: "// TODO: a", Type: "TODO"},
+		{Filename: "b.go", Line: 20, Comment: "// NOTE: b", Type: "NOTE"},
+		{Filename: "c.go", Line: 30, Comment: "// SECURITY: c", Type: "SECURITY"},
+	}
+
+	want := "::notice file=a.go,line=5,title=TODO::// TODO: a\n"
+
+	got := captureOutput(t, func() {
+		PrintWorkflowCommands(todos, policy)
+	})
+	if got != want {
+		t.Fatalf("PrintWorkflowCommands() with ignored types output mismatch\ngot:  %q\nwant: %q", got, want)
+	}
+}
+
 func TestPrintWorkflowCommandsAppliesEscaping(t *testing.T) {
 	todos := []types.TODO{
 		{

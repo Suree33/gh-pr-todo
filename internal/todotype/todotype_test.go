@@ -290,6 +290,22 @@ func TestPolicyCountCIFailingWithOverrides(t *testing.T) {
 			t.Fatalf("CountCIFailing() = %d, want 1", got)
 		}
 	})
+
+	t.Run("ignored error severity type does not fail CI", func(t *testing.T) {
+		p := DefaultPolicy().WithSeverity("OPTIMIZE", SeverityError).WithIgnoredTypes([]string{"OPTIMIZE"})
+		todos := []types.TODO{
+			{Type: "OPTIMIZE"},
+		}
+		if !p.IsIgnored("OPTIMIZE") {
+			t.Fatal("IsIgnored(OPTIMIZE) should be true")
+		}
+		if p.IsCIFailing("OPTIMIZE") {
+			t.Fatal("IsCIFailing(OPTIMIZE) should be false for ignored type")
+		}
+		if got := p.CountCIFailing(todos); got != 0 {
+			t.Fatalf("CountCIFailing() = %d, want 0", got)
+		}
+	})
 }
 
 func TestPackageLevelFunctionsUseDefaultPolicy(t *testing.T) {
@@ -352,4 +368,58 @@ func TestPolicyTypes(t *testing.T) {
 		}
 	})
 
+	t.Run("ignored built-in types excluded", func(t *testing.T) {
+		p := DefaultPolicy().WithIgnoredTypes([]string{"NOTE", "HACK"})
+		got := p.Types()
+		want := []string{"BUG", "FIXME", "TODO", "XXX"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("Types() = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("ignored custom severity types excluded", func(t *testing.T) {
+		p := DefaultPolicy().WithSeverity("REVIEW", SeverityWarning).WithIgnoredTypes([]string{"REVIEW"})
+		got := p.Types()
+		want := []string{"BUG", "FIXME", "HACK", "NOTE", "TODO", "XXX"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("Types() = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("ignored types case-insensitive", func(t *testing.T) {
+		p := DefaultPolicy().WithIgnoredTypes([]string{"note", "Hack"})
+		got := p.Types()
+		want := []string{"BUG", "FIXME", "TODO", "XXX"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("Types() = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("ignored types override severity additions", func(t *testing.T) {
+		p := DefaultPolicy().WithSeverity("SECURITY", SeverityError).WithIgnoredTypes([]string{"SECURITY"})
+		got := p.Types()
+		want := []string{"BUG", "FIXME", "HACK", "NOTE", "TODO", "XXX"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("Types() = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("immutability: original policy unchanged after WithIgnoredTypes", func(t *testing.T) {
+		orig := DefaultPolicy()
+		_ = orig.WithIgnoredTypes([]string{"NOTE"})
+		got := orig.Types()
+		want := []string{"BUG", "FIXME", "HACK", "NOTE", "TODO", "XXX"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("original Types() = %v, want %v (unchanged)", got, want)
+		}
+	})
+
+	t.Run("WithSeverities preserves ignored types", func(t *testing.T) {
+		p := DefaultPolicy().WithIgnoredTypes([]string{"NOTE"}).WithSeverity("TODO", SeverityWarning)
+		got := p.Types()
+		want := []string{"BUG", "FIXME", "HACK", "TODO", "XXX"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("Types() = %v, want %v (NOTE ignored even after WithSeverity)", got, want)
+		}
+	})
 }

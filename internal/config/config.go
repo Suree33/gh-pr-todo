@@ -13,17 +13,20 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config holds parsed severity overrides from configuration files.
+// Config holds parsed severity overrides and ignored types from configuration files.
 type Config struct {
 	Severities map[string]todotype.Severity
+	Ignored    map[string]bool
+	Found      bool // true if at least one config file was found and parsed
 }
 
 // File represents the YAML configuration file schema.
 type File struct {
 	Severity map[string][]string `yaml:"severity"`
+	Ignore   []string            `yaml:"ignore"`
 }
 
-// Parse parses YAML config data and validates severity values.
+// Parse parses YAML config data and validates severity values and ignore list.
 // source is used in error messages to identify the file origin.
 func Parse(data []byte, source string) (Config, error) {
 	var f File
@@ -31,43 +34,58 @@ func Parse(data []byte, source string) (Config, error) {
 		return Config{}, fmt.Errorf("%s: invalid YAML: %w", source, err)
 	}
 
-	if len(f.Severity) == 0 {
-		return Config{Severities: make(map[string]todotype.Severity)}, nil
+	cfg := Config{Found: true}
+
+	// Parse severity overrides
+	if len(f.Severity) > 0 {
+		severities := make(map[string]todotype.Severity)
+		for levelStr, typeNames := range f.Severity {
+			normalizedLevel := strings.ToLower(strings.TrimSpace(levelStr))
+
+			var sev todotype.Severity
+			switch normalizedLevel {
+			case "notice":
+				sev = todotype.SeverityNotice
+			case "warning":
+				sev = todotype.SeverityWarning
+			case "error":
+				sev = todotype.SeverityError
+			default:
+				return Config{}, fmt.Errorf("%s: invalid severity key %q: allowed values are notice, warning, error",
+					source, levelStr)
+			}
+
+			for _, typeName := range typeNames {
+				normalizedType := strings.TrimSpace(typeName)
+				if normalizedType == "" {
+					return Config{}, fmt.Errorf("%s: type name is empty in severity %q", source, normalizedLevel)
+				}
+				normalizedType = strings.ToUpper(normalizedType)
+
+				if existingSev, exists := severities[normalizedType]; exists && existingSev != sev {
+					return Config{}, fmt.Errorf("%s: type %q appears under multiple severity levels (%s and %s)",
+						source, normalizedType, existingSev, sev)
+				}
+				severities[normalizedType] = sev
+			}
+		}
+		cfg.Severities = severities
 	}
 
-	severities := make(map[string]todotype.Severity)
-	for levelStr, typeNames := range f.Severity {
-		normalizedLevel := strings.ToLower(strings.TrimSpace(levelStr))
-
-		var sev todotype.Severity
-		switch normalizedLevel {
-		case "notice":
-			sev = todotype.SeverityNotice
-		case "warning":
-			sev = todotype.SeverityWarning
-		case "error":
-			sev = todotype.SeverityError
-		default:
-			return Config{}, fmt.Errorf("%s: invalid severity key %q: allowed values are notice, warning, error",
-				source, levelStr)
-		}
-
-		for _, typeName := range typeNames {
-			normalizedType := strings.TrimSpace(typeName)
-			if normalizedType == "" {
-				return Config{}, fmt.Errorf("%s: type name is empty in severity %q", source, normalizedLevel)
+	// Parse ignore list
+	if len(f.Ignore) > 0 {
+		ignored := make(map[string]bool)
+		for _, t := range f.Ignore {
+			normalized := strings.ToUpper(strings.TrimSpace(t))
+			if normalized == "" {
+				return Config{}, fmt.Errorf("%s: type name is empty in ignore list", source)
 			}
-			normalizedType = strings.ToUpper(normalizedType)
-
-			if existingSev, exists := severities[normalizedType]; exists && existingSev != sev {
-				return Config{}, fmt.Errorf("%s: type %q appears under multiple severity levels (%s and %s)",
-					source, normalizedType, existingSev, sev)
-			}
-			severities[normalizedType] = sev
+			ignored[normalized] = true
 		}
+		cfg.Ignored = ignored
 	}
 
-	return Config{Severities: severities}, nil
+	return cfg, nil
 }
 
 // discoverRepoRoot walks up from cwd looking for a .git directory or file.
@@ -100,6 +118,7 @@ func DefaultConfigYAML() []byte {
     - XXX
     - BUG
   error: []
+ignore: []
 `)
 }
 
@@ -156,70 +175,76 @@ func WriteDefault(path string, force bool) error {
 	return nil
 }
 
-// LoadGlobal loads the user-level config file.
+// LoadGlobal loads the user-level global config file if it exists.
+// Returns an empty/nil-map Config if the file does not exist.
 func LoadGlobal(userConfigDir string) (Config, error) {
-	merged := Config{Severities: make(map[string]todotype.Severity)}
+	if userConfigDir == "" {
+		return Config{}, nil
+	}
 	globalPath, err := GlobalPath(userConfigDir)
 	if err != nil {
-		return merged, nil
+		return Config{}, nil
 	}
-	if err := mergeFile(globalPath, &merged); err != nil {
-		return merged, err
+	data, err := os.ReadFile(globalPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return Config{}, nil
+		}
+		return Config{}, fmt.Errorf("reading %s: %w", globalPath, err)
 	}
-	return merged, nil
+	return Parse(data, globalPath)
 }
 
-// LoadLocal loads and merges config files from global and local paths.
-// cwd is the current working directory used to discover the repo root.
-// userConfigDir is typically os.UserConfigDir().
-//
-// Precedence (later wins): global < repo root .gh-pr-todo.yml < repo .github/gh-pr-todo.yml.
+// LoadLocal loads config from global, repo root, and repo .github paths
+// with whole-file replacement: each existing file replaces the entire
+// previous config. Precedence (later wins):
+// global < repo root .gh-pr-todo.yml < repo .github/gh-pr-todo.yml.
+// If any repo config exists, global content does not survive.
 // Missing files are silently ignored; parse errors are returned.
 func LoadLocal(cwd, userConfigDir string) (Config, error) {
-	merged, err := LoadGlobal(userConfigDir)
-	if err != nil {
-		return merged, err
-	}
-
-	// Repository root discovery
+	// Repository root discovery happens before global loading so repo config can
+	// replace global config without reading it at all.
 	repoRoot, found := discoverRepoRoot(cwd)
 	if !found {
-		return merged, nil
+		return LoadGlobal(userConfigDir)
 	}
 
-	// Repo root config: <repo>/.gh-pr-todo.yml
-	rootPath := filepath.Join(repoRoot, ".gh-pr-todo.yml")
-	if err := mergeFile(rootPath, &merged); err != nil {
-		return merged, err
-	}
-
-	// Narrower scope config: <repo>/.github/gh-pr-todo.yml
+	// Narrower scope config replaces the repo-root config entirely, so prefer it
+	// before reading or parsing the broader repo-root file.
 	narrowPath := filepath.Join(repoRoot, ".github", "gh-pr-todo.yml")
-	if err := mergeFile(narrowPath, &merged); err != nil {
-		return merged, err
+	cfg, exists, err := loadFile(narrowPath)
+	if err != nil {
+		return Config{}, err
+	}
+	if exists {
+		return cfg, nil
 	}
 
-	return merged, nil
+	rootPath := filepath.Join(repoRoot, ".gh-pr-todo.yml")
+	cfg, exists, err = loadFile(rootPath)
+	if err != nil {
+		return Config{}, err
+	}
+	if exists {
+		return cfg, nil
+	}
+
+	return LoadGlobal(userConfigDir)
 }
 
-// mergeFile reads a YAML config file at path and merges its severity
-// overrides into the target Config. Missing files are silently skipped.
-func mergeFile(path string, target *Config) error {
+// loadFile reads and parses a config file at path. Missing files return
+// exists=false and no error.
+func loadFile(path string) (Config, bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil
+			return Config{}, false, nil
 		}
-		return fmt.Errorf("reading %s: %w", path, err)
+		return Config{}, false, fmt.Errorf("reading %s: %w", path, err)
 	}
-
 	cfg, err := Parse(data, path)
 	if err != nil {
-		return err
+		return Config{}, true, err
 	}
-
-	for k, v := range cfg.Severities {
-		target.Severities[k] = v
-	}
-	return nil
+	return cfg, true, nil
 }

@@ -15,6 +15,9 @@ import (
 // See https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands
 func PrintWorkflowCommands(todos []types.TODO, policy todotype.Policy) {
 	for _, todo := range todos {
+		if policy.IsIgnored(todo.Type) {
+			continue
+		}
 		fmt.Fprintf(color.Output, "::%s file=%s,line=%d,title=%s::%s\n",
 			workflowCommandFor(todo.Type, policy),
 			escapeWorkflowProperty(todo.Filename),

@@ -20,7 +20,7 @@ import (
 	"github.com/spf13/pflag"
 )
 
-func registerFlags(fs *pflag.FlagSet, repo *string, nameOnly, isCount, isHelp, noCIFail *bool, groupBy *types.GroupBy, sevFlag *severityFlag) {
+func registerFlags(fs *pflag.FlagSet, repo *string, nameOnly, isCount, isHelp, noCIFail *bool, groupBy *types.GroupBy, sevFlag *severityFlag, ignoreFlag *ignoreFlag) {
 	fs.StringVarP(repo, "repo", "R", "", "Select another repository using the [HOST/]OWNER/REPO format")
 	fs.BoolVar(nameOnly, "name-only", false, "Display only names of the files containing TODO-style comments")
 	fs.BoolVarP(isCount, "count", "c", false, "Display only the number of TODO-style comments")
@@ -28,6 +28,7 @@ func registerFlags(fs *pflag.FlagSet, repo *string, nameOnly, isCount, isHelp, n
 	fs.BoolVar(noCIFail, "no-ci-fail", false, "Disable non-zero exit when error-level TODOs are found in CI")
 	fs.Var(groupBy, "group-by", "Group TODO-style comments by: \"file\" or \"type\"")
 	fs.Var(sevFlag, "severity", "Override severity for one or more TODO types. Format: LEVEL=TYPE[,TYPE...] (e.g. --severity warning=TODO,HACK)")
+	fs.Var(ignoreFlag, "ignore", "Ignore specified TODO marker types (comma-separated, repeatable). These types are not detected or reported. Example: --ignore NOTE,HACK")
 }
 
 func main() {
@@ -84,8 +85,9 @@ func main() {
 		noCIFail bool
 		groupBy  = types.GroupByNone
 		sevFlag  = newSeverityFlag()
+		ignFlag  = newIgnoreFlag()
 	)
-	registerFlags(pflag.CommandLine, &repo, &nameOnly, &isCount, &isHelp, &noCIFail, &groupBy, sevFlag)
+	registerFlags(pflag.CommandLine, &repo, &nameOnly, &isCount, &isHelp, &noCIFail, &groupBy, sevFlag, ignFlag)
 	pflag.Usage = printUsage
 	if err := pflag.CommandLine.Parse(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -117,6 +119,7 @@ func main() {
 
 	// Build policy with config and CLI overrides.
 	// Precedence: default < config < CLI.
+	// CLI ignore and severity have highest priority.
 	policy := todotype.DefaultPolicy()
 
 	userConfigDir := ""
@@ -131,20 +134,21 @@ func main() {
 		err error
 	)
 	if useRemoteConfig {
-		cfg, err = config.LoadGlobal(userConfigDir)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "Config error:", err)
-			os.Exit(1)
-		}
-		if len(cfg.Severities) > 0 {
-			policy = policy.WithSeverities(cfg.Severities)
-		}
-
 		fetcher := ghclient.NewClient()
-		cfg, err = config.LoadRemote(fetcher, configRepo, configPR)
+		remoteCfg, err := config.LoadRemote(fetcher, configRepo, configPR)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Remote config error:", err)
 			os.Exit(1)
+		}
+
+		if remoteCfg.Found {
+			cfg = remoteCfg
+		} else {
+			cfg, err = config.LoadGlobal(userConfigDir)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "Config error:", err)
+				os.Exit(1)
+			}
 		}
 	} else {
 		cwd, err := os.Getwd()
@@ -158,12 +162,31 @@ func main() {
 			os.Exit(1)
 		}
 	}
+
+	// Apply severity overrides from config
 	if len(cfg.Severities) > 0 {
 		policy = policy.WithSeverities(cfg.Severities)
 	}
 
+	// Apply CLI severity overrides (highest priority)
 	if len(sevFlag.assignments) > 0 {
 		policy = policy.WithSeverities(sevFlag.assignments)
+	}
+
+	// Collect all ignored types from config and CLI, then apply together
+	ignoredSet := make(map[string]bool)
+	for t := range cfg.Ignored {
+		ignoredSet[t] = true
+	}
+	for _, t := range ignFlag.types {
+		ignoredSet[t] = true
+	}
+	if len(ignoredSet) > 0 {
+		ignored := make([]string, 0, len(ignoredSet))
+		for t := range ignoredSet {
+			ignored = append(ignored, t)
+		}
+		policy = policy.WithIgnoredTypes(ignored)
 	}
 
 	fetcher := ghclient.NewClient()
@@ -252,6 +275,36 @@ func (s *severityFlag) Set(val string) error {
 }
 
 func (s *severityFlag) Type() string { return "severity" }
+
+// ignoreFlag accumulates --ignore TYPE[,TYPE...] flag values.
+// Each flag adds one or more type names to the ignore set.
+type ignoreFlag struct {
+	types []string
+}
+
+func newIgnoreFlag() *ignoreFlag {
+	return &ignoreFlag{}
+}
+
+func (f *ignoreFlag) String() string {
+	return strings.Join(f.types, ",")
+}
+
+func (f *ignoreFlag) Set(val string) error {
+	for _, typ := range strings.Split(val, ",") {
+		t := strings.TrimSpace(typ)
+		if t == "" {
+			return fmt.Errorf("invalid --ignore %q: type name is empty", val)
+		}
+		if strings.ContainsRune(t, '=') {
+			return fmt.Errorf("invalid --ignore %q: type name %q must not contain '='", val, t)
+		}
+		f.types = append(f.types, strings.ToUpper(t))
+	}
+	return nil
+}
+
+func (f *ignoreFlag) Type() string { return "ignore" }
 
 // newRunResult computes a runResult from a TODO slice using the given policy.
 func newRunResult(todos []types.TODO, policy todotype.Policy) runResult {
@@ -344,24 +397,33 @@ func printUsage() {
 	fmt.Fprintf(color.Output, "  %s\n", "Use --severity LEVEL=TYPE[,TYPE...] to override severities.")
 	fmt.Fprintf(color.Output, "  %s\n", "Affects workflow annotation levels and CI exits for error-level types.")
 	fmt.Fprintf(color.Output, "  %s\n\n", "Example: --severity warning=TODO,HACK --severity error=FIXME")
+	fmt.Fprintf(color.Output, "%s\n", output.Bold("IGNORE TYPES"))
+	fmt.Fprintf(color.Output, "  %s\n", "Use --ignore TYPE[,TYPE...] to exclude marker types from detection.")
+	fmt.Fprintf(color.Output, "  %s\n", "Ignored types are not parsed or reported in any mode (default output,")
+	fmt.Fprintf(color.Output, "  %s\n", "--count, --name-only, --group-by, annotations, CI failure counts).")
+	fmt.Fprintf(color.Output, "  %s\n\n", "Example: --ignore NOTE,HACK")
 	fmt.Fprintf(color.Output, "%s\n", output.Bold("CONFIGURATION"))
-	fmt.Fprintf(color.Output, "  %s\n", "Severity overrides can be configured in YAML config files.")
+	fmt.Fprintf(color.Output, "  %s\n", "Severity overrides and ignored types can be configured in YAML config files.")
 	fmt.Fprintf(color.Output, "  %s\n", "Configured custom types are detected alongside the built-in markers.")
-	fmt.Fprintf(color.Output, "  %s\n", "Schema: severity:\n    notice|warning|error: [TYPE...]")
+	fmt.Fprintf(color.Output, "  %s\n", "Schema:")
+	fmt.Fprintf(color.Output, "  %s\n", "  severity:")
+	fmt.Fprintf(color.Output, "  %s\n", "    notice|warning|error: [TYPE...]")
+	fmt.Fprintf(color.Output, "  %s\n", "  ignore:")
+	fmt.Fprintf(color.Output, "  %s\n", "    - TYPE")
 	fmt.Fprintf(color.Output, "  %s\n", "Empty lists are allowed and ignored; a type may not appear under multiple severity levels.")
-	fmt.Fprintf(color.Output, "  %s\n", "Config file paths and precedence (later wins):")
+	fmt.Fprintf(color.Output, "  %s\n", "Config file paths and precedence (each existing file replaces earlier ones):")
 	fmt.Fprintf(color.Output, "  %s\n", "  1. user config dir/gh-pr-todo/config.yml (global)")
 	fmt.Fprintf(color.Output, "  %s\n", "  2. <repo>/.gh-pr-todo.yml (repo root)")
 	fmt.Fprintf(color.Output, "  %s\n", "  3. <repo>/.github/gh-pr-todo.yml (narrower repo config)")
-	fmt.Fprintf(color.Output, "  %s\n", "  4. CLI --severity flag (highest priority)")
+	fmt.Fprintf(color.Output, "  %s\n", "  4. CLI --severity and --ignore flags (highest priority)")
 	fmt.Fprintf(color.Output, "  %s\n", "When targeting another repository with --repo or a PR URL,")
-	fmt.Fprintf(color.Output, "  %s\n", "repo-local configs are replaced by remote configs:")
-	fmt.Fprintf(color.Output, "  %s\n", "  1. global config")
-	fmt.Fprintf(color.Output, "  %s\n", "  2. remote default branch config")
-	fmt.Fprintf(color.Output, "  %s\n", "  3. remote PR base branch config")
-	fmt.Fprintf(color.Output, "  %s\n", "  4. remote PR head branch config")
-	fmt.Fprintf(color.Output, "  %s\n", "  5. CLI --severity flag (highest priority)")
-	fmt.Fprintf(color.Output, "  %s\n\n", "Example config:\n# .github/gh-pr-todo.yml\nseverity:\n  warning:\n    - TODO\n  error:\n    - FIXME")
+	fmt.Fprintf(color.Output, "  %s\n", "remote config replaces global config when found:")
+	fmt.Fprintf(color.Output, "  %s\n", "  1. remote PR head branch config")
+	fmt.Fprintf(color.Output, "  %s\n", "  2. remote PR base branch config")
+	fmt.Fprintf(color.Output, "  %s\n", "  3. remote default branch config")
+	fmt.Fprintf(color.Output, "  %s\n", "  4. global config (fallback only when no remote config exists)")
+	fmt.Fprintf(color.Output, "  %s\n", "  5. CLI --severity and --ignore flags (highest priority)")
+	fmt.Fprintf(color.Output, "  %s\n\n", "Example config:  # .github/gh-pr-todo.yml\nseverity:\n  warning:\n    - TODO\n  error:\n    - FIXME\nignore:\n  - NOTE")
 }
 
 func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy, gha bool, policy todotype.Policy) (runResult, error) {

@@ -743,7 +743,9 @@ func TestPrintUsage(t *testing.T) {
 		"gh pr-todo init [--repo | --global] [--force]",
 		"FLAGS",
 		"--repo",
+		"requires a PR number, URL, or branch argument",
 		"Display only names of the files containing TODO-style comments",
+		"takes precedence over --count",
 		"--name-only",
 		"Display only the number of TODO-style comments",
 		"--count",
@@ -758,6 +760,8 @@ func TestPrintUsage(t *testing.T) {
 		"error-level TODO is found.",
 		"By default, no built-in",
 		"keyword maps to error-level",
+		"OUTPUT MODES",
+		"If --name-only and --count are both specified, --name-only takes precedence.",
 		"SEVERITY OVERRIDES",
 		"LEVEL=TYPE[,TYPE...]",
 		"workflow annotation levels and CI exits",
@@ -781,6 +785,7 @@ func TestPrintUsage(t *testing.T) {
 		"remote PR base branch config",
 		"remote PR head branch config",
 		"CLI --severity and --ignore flags (highest priority)",
+		"Example config:  # .gh-pr-todo.yml",
 	}
 	for _, want := range wantContain {
 		if !strings.Contains(out, want) {

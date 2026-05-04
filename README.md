@@ -8,11 +8,12 @@ A GitHub CLI extension that extracts TODO-style comments from pull request diffs
 
 ## Features
 
-- **Syntax-Aware Detection**: Uses Tree-sitter for accurate TODO-style comment detection in supported languages, with regex fallback for others
-- **Beautiful Output**: Colorized terminal output with loading indicators
-- **Multiple Formats**: Supports various comment styles (`//`, `#`, `<!--`, `;`, `/*`)
-- **Fast**: Efficient diff parsing with GitHub CLI integration
-- **PR-Focused**: Only shows comments from your current changes
+- **PR-Focused Detection**: Extracts TODO-style comments only from pull request diff additions
+- **Syntax-Aware Parsing**: Uses Tree-sitter for accurate comment detection in supported languages, with regex fallback for others
+- **Configurable Marker Policy**: Customize marker types, severities, and ignored types with CLI flags or YAML config
+- **Config Initialization**: Create project or global config files with `gh pr-todo init`
+- **CI and GitHub Actions Support**: Emit workflow annotations and fail CI only for marker types configured as `error`
+- **Flexible Output**: Colorized output with grouping, file-name-only, and count-only modes
 
 ## Installation
 
@@ -76,7 +77,7 @@ gh pr-todo --ignore NOTE,HACK
 - `[<number> | <url> | <branch>]`: Specify a PR by number, URL, or branch name
 - `-R, --repo [HOST/]OWNER/REPO`: Select another repository using the [HOST/]OWNER/REPO format (requires a PR number, URL, or branch argument)
 - `--group-by`: Group TODO-style comments by `file` or `type`
-- `--name-only`: Display only names of the files containing TODO-style comments
+- `--name-only`: Display only names of the files containing TODO-style comments. If both `--name-only` and `--count` are specified, `--name-only` takes precedence
 - `-c, --count`: Display only the number of TODO-style comments
 - `--severity LEVEL=TYPE[,TYPE...]`: Override severity for one or more TODO types; repeatable, whitespace-tolerant, and last assignment wins for duplicate types
 - `--ignore TYPE[,TYPE...]`: Ignore specified marker types; repeatable, case-insensitive, whitespace-tolerant. Ignored types are not detected or reported in any mode, including annotations and CI failure counts

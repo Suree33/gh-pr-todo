@@ -718,8 +718,9 @@ func TestPrintUsage(t *testing.T) {
 		noCIFail bool
 		groupBy  = types.GroupByNone
 		sevFlag  = newSeverityFlag()
+		ignFlag  = newIgnoreFlag()
 	)
-	registerFlags(pflag.CommandLine, &repo, &nameOnly, &isCount, &isHelp, &noCIFail, &groupBy, sevFlag)
+	registerFlags(pflag.CommandLine, &repo, &nameOnly, &isCount, &isHelp, &noCIFail, &groupBy, sevFlag, ignFlag)
 
 	var out string
 	stdout := captureStdout(t, func() {
@@ -748,6 +749,7 @@ func TestPrintUsage(t *testing.T) {
 		"--help",
 		"--group-by",
 		"--severity",
+		"--ignore",
 		"--no-ci-fail",
 		"ENVIRONMENT",
 		"CI",
@@ -760,20 +762,24 @@ func TestPrintUsage(t *testing.T) {
 		"workflow annotation levels and CI exits",
 		"warning=TODO,HACK",
 		"CONFIGURATION",
-		"Configured custom types are detected alongside the built-in markers.",
-		"Schema: severity:",
+		"Severity overrides and ignored types can be configured",
+		"custom types are detected alongside the built-in markers.",
+		"Schema:",
+		"severity:",
 		"notice|warning|error: [TYPE...]",
+		"ignore:",
+		"- TYPE",
 		"Empty lists are allowed and ignored; a type may not appear under multiple severity levels.",
 		"user config dir/gh-pr-todo/config.yml",
 		".gh-pr-todo.yml",
 		".github/gh-pr-todo.yml",
-		"remote configs",
+		"remote config replaces global config when found",
 		"--group-by",
 		"Group TODO-style comments by: \"file\" or \"type\"",
 		"remote default branch config",
 		"remote PR base branch config",
 		"remote PR head branch config",
-		"CLI --severity flag (highest priority)",
+		"CLI --severity and --ignore flags (highest priority)",
 	}
 	for _, want := range wantContain {
 		if !strings.Contains(out, want) {
@@ -1051,6 +1057,213 @@ func TestSeverityOverrideAffectsWorkflowAnnotation(t *testing.T) {
 		wantLine := "::error file=foo.go,line=2,title=TODO::// TODO: add bar"
 		if !strings.Contains(out, wantLine) {
 			t.Fatalf("runMain output = %q, expected to contain %q", out, wantLine)
+		}
+	})
+}
+
+// Mixed diff with both TODO and NOTE on added lines.
+const mixedDiff = `diff --git a/foo.go b/foo.go
+index 0000000..1111111 100644
+--- a/foo.go
++++ b/foo.go
+@@ -1,1 +1,3 @@
+ package foo
++// TODO: add bar
++// NOTE: important note
+`
+
+func TestIgnoreFlagInvalid(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{name: "empty type", value: "NOTE,"},
+		{name: "type contains equals", value: "NOTE=FIXME"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newIgnoreFlag()
+			err := f.Set(tt.value)
+			if err == nil {
+				t.Fatalf("ignoreFlag.Set(%q) expected error, got nil", tt.value)
+			}
+		})
+	}
+}
+
+func TestIgnoreFlagParsing(t *testing.T) {
+	t.Run("single type", func(t *testing.T) {
+		f := newIgnoreFlag()
+		if err := f.Set("NOTE"); err != nil {
+			t.Fatalf("Set(NOTE) unexpected error: %v", err)
+		}
+		if len(f.types) != 1 || f.types[0] != "NOTE" {
+			t.Fatalf("types = %v, want [NOTE]", f.types)
+		}
+	})
+
+	t.Run("multiple types", func(t *testing.T) {
+		f := newIgnoreFlag()
+		if err := f.Set("NOTE,HACK"); err != nil {
+			t.Fatalf("Set(NOTE,HACK) unexpected error: %v", err)
+		}
+		want := []string{"NOTE", "HACK"}
+		if len(f.types) != 2 || f.types[0] != "NOTE" || f.types[1] != "HACK" {
+			t.Fatalf("types = %v, want %v", f.types, want)
+		}
+	})
+
+	t.Run("repeated flags accumulate", func(t *testing.T) {
+		f := newIgnoreFlag()
+		if err := f.Set("NOTE"); err != nil {
+			t.Fatalf("Set(NOTE) unexpected error: %v", err)
+		}
+		if err := f.Set("HACK"); err != nil {
+			t.Fatalf("Set(HACK) unexpected error: %v", err)
+		}
+		want := []string{"NOTE", "HACK"}
+		if len(f.types) != 2 || f.types[0] != "NOTE" || f.types[1] != "HACK" {
+			t.Fatalf("types = %v, want %v", f.types, want)
+		}
+	})
+
+	t.Run("case normalization", func(t *testing.T) {
+		f := newIgnoreFlag()
+		if err := f.Set("note"); err != nil {
+			t.Fatalf("Set(note) unexpected error: %v", err)
+		}
+		if len(f.types) != 1 || f.types[0] != "NOTE" {
+			t.Fatalf("types = %v, want [NOTE]", f.types)
+		}
+	})
+
+	t.Run("whitespace trimming", func(t *testing.T) {
+		f := newIgnoreFlag()
+		if err := f.Set("  NOTE  ,  HACK  "); err != nil {
+			t.Fatalf("Set with whitespace unexpected error: %v", err)
+		}
+		want := []string{"NOTE", "HACK"}
+		if len(f.types) != 2 || f.types[0] != "NOTE" || f.types[1] != "HACK" {
+			t.Fatalf("types = %v, want %v", f.types, want)
+		}
+	})
+}
+
+func TestIgnoredTypesExcludeFromOutput(t *testing.T) {
+	mixedFetcher := &stubFetcher{
+		diff: mixedDiff,
+		files: map[string][]byte{
+			"foo.go": []byte("package foo\n// TODO: add bar\n// NOTE: important note\n"),
+		},
+	}
+
+	ignoreNOTE := todotype.DefaultPolicy().WithIgnoredTypes([]string{"NOTE"})
+
+	t.Run("default output excludes ignored NOTE", func(t *testing.T) {
+		var result runResult
+		var err error
+		out, _, _ := captureAll(t, func() {
+			result, err = runMain(mixedFetcher, "o/r", "1", types.GroupByNone, false, ignoreNOTE)
+		})
+		if err != nil {
+			t.Fatalf("runMain() unexpected error: %v", err)
+		}
+		if strings.Contains(out, "NOTE") {
+			t.Fatalf("output should not contain NOTE when ignored: %q", out)
+		}
+		if !strings.Contains(out, "TODO: add bar") {
+			t.Fatalf("output should contain TODO: %q", out)
+		}
+		if result.totalCount != 1 {
+			t.Fatalf("totalCount = %d, want 1 (only TODO)", result.totalCount)
+		}
+	})
+
+	t.Run("--count excludes ignored NOTE", func(t *testing.T) {
+		var result runResult
+		var err error
+		out, _, _ := captureAll(t, func() {
+			result, err = runCount(mixedFetcher, "o/r", "1", ignoreNOTE)
+		})
+		if err != nil {
+			t.Fatalf("runCount() unexpected error: %v", err)
+		}
+		if strings.TrimSpace(out) != "1" {
+			t.Fatalf("runCount() output = %q, want %q", out, "1")
+		}
+		if result.totalCount != 1 {
+			t.Fatalf("totalCount = %d, want 1", result.totalCount)
+		}
+	})
+
+	t.Run("--name-only excludes ignored NOTE", func(t *testing.T) {
+		// Both markers are in foo.go, so file should still appear
+		var err error
+		out, _, _ := captureAll(t, func() {
+			_, err = runNameOnly(mixedFetcher, "o/r", "1", ignoreNOTE)
+		})
+		if err != nil {
+			t.Fatalf("runNameOnly() unexpected error: %v", err)
+		}
+		if strings.TrimSpace(out) != "foo.go" {
+			t.Fatalf("runNameOnly() output = %q, want %q", out, "foo.go")
+		}
+	})
+
+	t.Run("group-by type excludes ignored NOTE", func(t *testing.T) {
+		var result runResult
+		var err error
+		out, _, _ := captureAll(t, func() {
+			result, err = runMain(mixedFetcher, "o/r", "1", types.GroupByType, false, ignoreNOTE)
+		})
+		if err != nil {
+			t.Fatalf("runMain() unexpected error: %v", err)
+		}
+		if strings.Contains(out, "[NOTE]") {
+			t.Fatalf("group-by output should not contain [NOTE] section: %q", out)
+		}
+		if !strings.Contains(out, "[TODO]") {
+			t.Fatalf("group-by output should contain [TODO] section: %q", out)
+		}
+		if result.totalCount != 1 {
+			t.Fatalf("totalCount = %d, want 1", result.totalCount)
+		}
+	})
+
+	t.Run("workflow annotations exclude ignored NOTE", func(t *testing.T) {
+		var err error
+		out, _, _ := captureAll(t, func() {
+			_, err = runMain(mixedFetcher, "o/r", "1", types.GroupByNone, true, ignoreNOTE)
+		})
+		if err != nil {
+			t.Fatalf("runMain() unexpected error: %v", err)
+		}
+		if strings.Contains(out, "::notice file=foo.go,line=3,title=NOTE") {
+			t.Fatalf("workflow output should not contain NOTE annotation: %q", out)
+		}
+		if !strings.Contains(out, "::notice file=foo.go,line=2,title=TODO") {
+			t.Fatalf("workflow output should contain TODO annotation: %q", out)
+		}
+	})
+
+	t.Run("CI failure count excludes ignored types", func(t *testing.T) {
+		// NOTE overridden to error would normally fail CI, but if NOTE is ignored it should not
+		policy := todotype.DefaultPolicy().WithSeverity("NOTE", todotype.SeverityError).WithIgnoredTypes([]string{"NOTE"})
+		var result runResult
+		var err error
+		_, _, _ = captureAll(t, func() {
+			result, err = runMain(mixedFetcher, "o/r", "1", types.GroupByNone, false, policy)
+		})
+		if err != nil {
+			t.Fatalf("runMain() unexpected error: %v", err)
+		}
+		if result.ciFailingCount != 0 {
+			t.Fatalf("ciFailingCount = %d, want 0 (NOTE ignored overrides error severity)", result.ciFailingCount)
+		}
+		// TODO should still be detected
+		if result.totalCount != 1 {
+			t.Fatalf("totalCount = %d, want 1 (only TODO)", result.totalCount)
 		}
 	})
 }

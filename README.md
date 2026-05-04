@@ -66,6 +66,9 @@ gh pr-todo --group-by file
 # Override severities for one or more TODO types
 # Format: --severity LEVEL=TYPE[,TYPE...]
 gh pr-todo --severity warning=TODO,HACK --severity error=FIXME
+
+# Ignore specific marker types from detection (affects all output modes)
+gh pr-todo --ignore NOTE,HACK
 ```
 
 ### Command Options
@@ -76,6 +79,7 @@ gh pr-todo --severity warning=TODO,HACK --severity error=FIXME
 - `--name-only`: Display only names of the files containing TODO-style comments
 - `-c, --count`: Display only the number of TODO-style comments
 - `--severity LEVEL=TYPE[,TYPE...]`: Override severity for one or more TODO types; repeatable, whitespace-tolerant, and last assignment wins for duplicate types
+- `--ignore TYPE[,TYPE...]`: Ignore specified marker types; repeatable, case-insensitive, whitespace-tolerant. Ignored types are not detected or reported in any mode, including annotations and CI failure counts
 - `-h, --help`: Display help information
 - `--no-ci-fail`: Disable non-zero exit when error-level TODOs are found in CI (see below)
 
@@ -111,15 +115,18 @@ severity:
     - XXX
     - BUG
   error: []
+ignore: []
 ```
 
 ### Configuration File
 
-Severity overrides can be persisted in YAML configuration files. Config files use the following schema:
+Severity overrides and ignored types can be persisted in YAML configuration files. Config files use the following schema:
 
 ```yaml
 severity:
   notice|warning|error: [TYPE...]
+ignore:
+  - TYPE
 ```
 
 Example (`.github/gh-pr-todo.yml`):
@@ -130,32 +137,69 @@ severity:
     - TODO
   error:
     - FIXME
+ignore:
+  - NOTE
 ```
 
-#### Config File Paths
+#### Config File Paths and Precedence
 
-Config files are loaded from these locations in order of increasing precedence:
+Config files use **whole-file replacement** by precedence: each existing file replaces the entire previous configuration. This applies to both severity overrides and ignored types.
+
+Local files (in order of increasing precedence):
 
 1. User config dir `gh-pr-todo/config.yml` (global, shared across all repos; usually `~/.config/gh-pr-todo/config.yml` on Linux)
 2. `<repo>/.gh-pr-todo.yml` (repository root)
 3. `<repo>/.github/gh-pr-todo.yml` (narrower repo scope)
-4. CLI `--severity` flag (highest priority)
+4. CLI `--severity` and `--ignore` flags (highest priority)
 
-Each file's severity overrides are merged into the previous level. A more specific file overrides the same keys from a broader file. Unspecified keys keep their previous value.
+If a repo config file exists (root or `.github`), the global config is not applied. Within a repo, `.github/gh-pr-todo.yml` replaces `.gh-pr-todo.yml` entirely. CLI flags are applied on top of the resolved config.
 
 Configured TODO types are automatically detected in PR diffs alongside the built-in types. You can define custom types like `SECURITY` or `PERF` and they will be recognized.
 
 #### Remote Config Precedence
 
-When targeting another repository with `--repo` or a PR URL, local repository config files are replaced by remote configuration files with the following precedence (later wins):
+When targeting another repository with `--repo` or a PR URL, remote configuration is resolved with the following precedence:
 
-1. Global local config (user config dir `gh-pr-todo/config.yml`)
-2. Remote default branch config
-3. Remote PR base branch config
-4. Remote PR head branch config
-5. CLI `--severity` flag (highest priority)
+1. Remote PR head branch config
+2. Remote PR base branch config
+3. Remote default branch config
+4. Global local config, only when no remote config exists
+5. CLI `--severity` and `--ignore` flags (highest priority)
 
-For each remote scope, both `.gh-pr-todo.yml` and `.github/gh-pr-todo.yml` are checked (the narrower path wins within each scope).
+For each remote scope, `.github/gh-pr-todo.yml` replaces `.gh-pr-todo.yml` entirely. A remote config file replaces the global config entirely; global config is only used as a fallback when no remote config exists.
+
+#### Ignoring Marker Types
+
+The `ignore` config key lists marker types to exclude entirely from detection. Ignored types are not parsed or reported in any mode:
+
+- Default output
+- `--count`
+- `--name-only`
+- `--group-by file` or `--group-by type`
+- GitHub Actions annotations
+- CI failure counts
+
+Example:
+
+```yaml
+# .github/gh-pr-todo.yml
+severity:
+  warning:
+    - TODO
+  error:
+    - FIXME
+ignore:
+  - NOTE
+  - HACK
+```
+
+This config makes the tool ignore `NOTE` and `HACK` markers while still detecting `TODO` and `FIXME`. Ignored types can be built-in or custom and take precedence over severity: even if a type has `error` severity, ignoring it removes it from detection entirely.
+
+Use the CLI `--ignore` flag to extend the ignore set temporarily:
+
+```bash
+gh pr-todo --ignore NOTE,HACK
+```
 
 ### CI Mode
 

@@ -16,8 +16,14 @@ func TestParse(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Parse() unexpected error: %v", err)
 		}
-		if len(cfg.Severities) != 0 {
-			t.Fatalf("expected empty config, got %v", cfg.Severities)
+		if cfg.Severities != nil {
+			t.Fatalf("expected nil Severities, got %v", cfg.Severities)
+		}
+		if cfg.Ignored != nil {
+			t.Fatalf("expected nil Ignored, got %v", cfg.Ignored)
+		}
+		if !cfg.Found {
+			t.Fatal("expected Found=true after Parse")
 		}
 	})
 
@@ -26,8 +32,11 @@ func TestParse(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Parse() unexpected error: %v", err)
 		}
-		if len(cfg.Severities) != 0 {
-			t.Fatalf("expected empty config, got %v", cfg.Severities)
+		if cfg.Severities != nil {
+			t.Fatalf("expected nil Severities, got %v", cfg.Severities)
+		}
+		if cfg.Ignored != nil {
+			t.Fatalf("expected nil Ignored, got %v", cfg.Ignored)
 		}
 	})
 
@@ -44,6 +53,9 @@ func TestParse(t *testing.T) {
 		}
 		if !reflect.DeepEqual(cfg.Severities, want) {
 			t.Fatalf("Parse() = %v, want %v", cfg.Severities, want)
+		}
+		if !cfg.Found {
+			t.Fatal("expected Found=true")
 		}
 	})
 
@@ -168,6 +180,89 @@ func TestParse(t *testing.T) {
 			t.Fatal("Parse() expected error for case-insensitive duplicate type, got nil")
 		}
 	})
+
+	t.Run("ignore list parses to normalized set", func(t *testing.T) {
+		data := []byte("ignore:\n  - NOTE\n  - HACK\n  - todo\n")
+		cfg, err := Parse(data, "test")
+		if err != nil {
+			t.Fatalf("Parse() unexpected error: %v", err)
+		}
+		if len(cfg.Severities) != 0 {
+			t.Fatalf("expected no severities, got %v", cfg.Severities)
+		}
+		if !cfg.Ignored["NOTE"] || !cfg.Ignored["HACK"] || !cfg.Ignored["TODO"] {
+			t.Fatalf("expected ignored={NOTE,HACK,TODO}, got %v", cfg.Ignored)
+		}
+		// Should not have extra entries beyond what was specified
+		if len(cfg.Ignored) != 3 {
+			t.Fatalf("expected exactly 3 ignored types, got %v", cfg.Ignored)
+		}
+	})
+
+	t.Run("ignore list case normalization", func(t *testing.T) {
+		data := []byte("ignore:\n  - note\n  - Hack\n")
+		cfg, err := Parse(data, "test")
+		if err != nil {
+			t.Fatalf("Parse() unexpected error: %v", err)
+		}
+		if !cfg.Ignored["NOTE"] || !cfg.Ignored["HACK"] {
+			t.Fatalf("expected ignored={NOTE,HACK}, got %v", cfg.Ignored)
+		}
+	})
+
+	t.Run("empty ignore list results in nil map", func(t *testing.T) {
+		data := []byte("ignore: []")
+		cfg, err := Parse(data, "test")
+		if err != nil {
+			t.Fatalf("Parse() unexpected error: %v", err)
+		}
+		if cfg.Ignored != nil {
+			t.Fatalf("expected nil Ignored for empty list, got %v", cfg.Ignored)
+		}
+	})
+
+	t.Run("ignore with only severity has nil Ignored", func(t *testing.T) {
+		data := []byte("severity:\n  warning:\n    - TODO\n")
+		cfg, err := Parse(data, "test")
+		if err != nil {
+			t.Fatalf("Parse() unexpected error: %v", err)
+		}
+		if cfg.Ignored != nil {
+			t.Fatalf("expected nil Ignored when no ignore key, got %v", cfg.Ignored)
+		}
+		if cfg.Severities["TODO"] != todotype.SeverityWarning {
+			t.Fatalf("expected TODO=warning, got %v", cfg.Severities["TODO"])
+		}
+	})
+
+	t.Run("ignore empty type name returns error", func(t *testing.T) {
+		data := []byte("ignore:\n  - \"\"")
+		_, err := Parse(data, "test")
+		if err == nil || !strings.Contains(err.Error(), "type name is empty in ignore list") {
+			t.Fatalf("Parse() expected error for empty ignore type, got %v", err)
+		}
+	})
+
+	t.Run("error message for ignore includes source path", func(t *testing.T) {
+		_, err := Parse([]byte("ignore:\n  - \"\""), "/my/config.yml")
+		if err == nil || !strings.Contains(err.Error(), "/my/config.yml") {
+			t.Fatalf("Parse() error = %v, expected to contain source path", err)
+		}
+	})
+
+	t.Run("combination of severity and ignore", func(t *testing.T) {
+		data := []byte("severity:\n  warning:\n    - TODO\nignore:\n  - NOTE")
+		cfg, err := Parse(data, "test")
+		if err != nil {
+			t.Fatalf("Parse() unexpected error: %v", err)
+		}
+		if cfg.Severities["TODO"] != todotype.SeverityWarning {
+			t.Fatalf("expected TODO=warning, got %v", cfg.Severities["TODO"])
+		}
+		if !cfg.Ignored["NOTE"] {
+			t.Fatalf("expected NOTE ignored, got %v", cfg.Ignored)
+		}
+	})
 }
 
 func TestDefaultConfigYAMLParsesToRuntimeDefaults(t *testing.T) {
@@ -198,6 +293,11 @@ func TestDefaultConfigYAMLParsesToRuntimeDefaults(t *testing.T) {
 			if sev == todotype.SeverityError {
 				t.Fatalf("expected no error-level types in default, but %s is error", typ)
 			}
+		}
+
+		// ignore: [] should result in nil Ignored map (no ignored types)
+		if cfg.Ignored != nil {
+			t.Fatalf("expected nil Ignored for default config, got %v", cfg.Ignored)
 		}
 	})
 }
@@ -400,7 +500,7 @@ func TestLoadLocal(t *testing.T) {
 		}
 	})
 
-	t.Run("repo root config overrides global", func(t *testing.T) {
+	t.Run("repo root config replaces global entirely", func(t *testing.T) {
 		userConfigDir := t.TempDir()
 		globalDir := filepath.Join(userConfigDir, "gh-pr-todo")
 		if err := os.MkdirAll(globalDir, 0755); err != nil {
@@ -426,13 +526,40 @@ func TestLoadLocal(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LoadLocal() unexpected error: %v", err)
 		}
-		// Global TODO=error overridden by repo TODO=warning
+		// Repo config replaces global entirely: only TODO=warning
 		if cfg.Severities["TODO"] != todotype.SeverityWarning {
-			t.Fatalf("expected TODO=warning (repo overrides global), got %v", cfg.Severities["TODO"])
+			t.Fatalf("expected TODO=warning (repo replaces global), got %v", cfg.Severities["TODO"])
 		}
-		// Global FIXME=notice preserved
-		if cfg.Severities["FIXME"] != todotype.SeverityNotice {
-			t.Fatalf("expected FIXME=notice (from global), got %v", cfg.Severities["FIXME"])
+		// FIXME from global should NOT survive whole-file replacement
+		if _, exists := cfg.Severities["FIXME"]; exists {
+			t.Fatalf("FIXME should not survive repo replacement, but got %v", cfg.Severities["FIXME"])
+		}
+	})
+
+	t.Run("invalid global config is not read when repo config exists", func(t *testing.T) {
+		userConfigDir := t.TempDir()
+		globalDir := filepath.Join(userConfigDir, "gh-pr-todo")
+		if err := os.MkdirAll(globalDir, 0755); err != nil {
+			t.Fatalf("MkdirAll() error: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(globalDir, "config.yml"), []byte("severity:\n  critical:\n    - TODO\n"), 0644); err != nil {
+			t.Fatalf("WriteFile() error: %v", err)
+		}
+
+		repoRoot := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(repoRoot, ".git"), 0755); err != nil {
+			t.Fatalf("MkdirAll() error: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(repoRoot, ".gh-pr-todo.yml"), []byte("severity:\n  warning:\n    - TODO\n"), 0644); err != nil {
+			t.Fatalf("WriteFile() error: %v", err)
+		}
+
+		cfg, err := LoadLocal(repoRoot, userConfigDir)
+		if err != nil {
+			t.Fatalf("LoadLocal() unexpected error: %v", err)
+		}
+		if cfg.Severities["TODO"] != todotype.SeverityWarning {
+			t.Fatalf("expected TODO=warning from repo config, got %v", cfg.Severities["TODO"])
 		}
 	})
 
@@ -475,6 +602,30 @@ func TestLoadLocal(t *testing.T) {
 		}
 		if cfg.Severities["TODO"] != todotype.SeverityError {
 			t.Fatalf("expected TODO=error (.github wins), got %v", cfg.Severities["TODO"])
+		}
+	})
+
+	t.Run("valid .github config replaces invalid root config", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(repoRoot, ".git"), 0755); err != nil {
+			t.Fatalf("MkdirAll() error: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(repoRoot, ".gh-pr-todo.yml"), []byte("severity:\n  critical:\n    - TODO\n"), 0644); err != nil {
+			t.Fatalf("WriteFile() error: %v", err)
+		}
+		if err := os.MkdirAll(filepath.Join(repoRoot, ".github"), 0755); err != nil {
+			t.Fatalf("MkdirAll() error: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(repoRoot, ".github", "gh-pr-todo.yml"), []byte("severity:\n  error:\n    - TODO\n"), 0644); err != nil {
+			t.Fatalf("WriteFile() error: %v", err)
+		}
+
+		cfg, err := LoadLocal(repoRoot, t.TempDir())
+		if err != nil {
+			t.Fatalf("LoadLocal() unexpected error: %v", err)
+		}
+		if cfg.Severities["TODO"] != todotype.SeverityError {
+			t.Fatalf("expected TODO=error from .github config, got %v", cfg.Severities["TODO"])
 		}
 	})
 

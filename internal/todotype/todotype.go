@@ -23,6 +23,7 @@ const (
 type Policy struct {
 	severityByType      map[string]Severity
 	ciFailingSeverities map[Severity]bool
+	ignoredTypes        map[string]bool
 }
 
 // DefaultPolicy returns the default TODO type policy.
@@ -50,6 +51,7 @@ func (p Policy) WithSeverities(overrides map[string]Severity) Policy {
 	clone := Policy{
 		severityByType:      make(map[string]Severity, len(p.severityByType)+len(overrides)),
 		ciFailingSeverities: make(map[Severity]bool, len(p.ciFailingSeverities)),
+		ignoredTypes:        make(map[string]bool, len(p.ignoredTypes)),
 	}
 	for todoType, severity := range p.severityByType {
 		clone.severityByType[todoType] = severity
@@ -57,8 +59,32 @@ func (p Policy) WithSeverities(overrides map[string]Severity) Policy {
 	for severity, failing := range p.ciFailingSeverities {
 		clone.ciFailingSeverities[severity] = failing
 	}
+	for t := range p.ignoredTypes {
+		clone.ignoredTypes[t] = true
+	}
 	for todoType, severity := range overrides {
 		clone.severityByType[normalizeTodoType(todoType)] = severity
+	}
+	return clone
+}
+
+// WithIgnoredTypes returns a copy of the policy with the ignored type set
+// replaced by the given types. Ignored types are excluded from Types() and
+// therefore from detection, output, annotations, and CI failure counts.
+func (p Policy) WithIgnoredTypes(types []string) Policy {
+	clone := Policy{
+		severityByType:      make(map[string]Severity, len(p.severityByType)),
+		ciFailingSeverities: make(map[Severity]bool, len(p.ciFailingSeverities)),
+		ignoredTypes:        make(map[string]bool, len(types)),
+	}
+	for todoType, severity := range p.severityByType {
+		clone.severityByType[todoType] = severity
+	}
+	for severity, failing := range p.ciFailingSeverities {
+		clone.ciFailingSeverities[severity] = failing
+	}
+	for _, t := range types {
+		clone.ignoredTypes[normalizeTodoType(t)] = true
 	}
 	return clone
 }
@@ -72,10 +98,18 @@ func (p Policy) SeverityFor(todoType string) Severity {
 	return severity
 }
 
+// IsIgnored reports whether a TODO type is excluded from detection and reporting.
+func (p Policy) IsIgnored(todoType string) bool {
+	return p.ignoredTypes[normalizeTodoType(todoType)]
+}
+
 // IsCIFailing reports whether a TODO of the given type should cause a
-// non-zero exit in CI. By default, only error-level types fail;
-// warning-level and notice-level types do not.
+// non-zero exit in CI. Ignored types never fail CI. By default, only
+// error-level types fail; warning-level and notice-level types do not.
 func (p Policy) IsCIFailing(todoType string) bool {
+	if p.IsIgnored(todoType) {
+		return false
+	}
 	return p.ciFailingSeverities[p.SeverityFor(todoType)]
 }
 
@@ -101,16 +135,22 @@ func DefaultTypes() []string {
 	return result
 }
 
-// Types returns all TODO marker types known to this policy, including
-// built-in markers and any custom types added via severity overrides.
+// Types returns all TODO marker types known to this policy, excluding
+// ignored types. Built-in markers and custom types added via severity
+// overrides are included unless they are in the ignored set.
 // The result is sorted alphabetically and normalized to uppercase.
 func (p Policy) Types() []string {
 	typeSet := make(map[string]bool)
 	for _, t := range defaultTypes {
-		typeSet[t] = true
+		if !p.ignoredTypes[t] {
+			typeSet[t] = true
+		}
 	}
 	for t := range p.severityByType {
-		typeSet[normalizeTodoType(t)] = true
+		normalized := normalizeTodoType(t)
+		if !p.ignoredTypes[normalized] {
+			typeSet[normalized] = true
+		}
 	}
 	result := make([]string, 0, len(typeSet))
 	for t := range typeSet {

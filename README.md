@@ -85,21 +85,29 @@ gh pr-todo --ignore NOTE,HACK
 
 ### Initializing Configuration
 
-Use `gh pr-todo init` to create a default configuration file. In a terminal, it uses an interactive selector; when input or output is redirected, it falls back to the plain text prompt:
+Use `gh pr-todo init` to create a default configuration file. Without an explicit location, it prompts in terminals and falls back to a plain text prompt when redirected:
 
 ```bash
 gh pr-todo init
 ```
 
-You will be prompted to choose a location for the config file:
+For non-interactive scripts, pass a location:
+
+```bash
+gh pr-todo init --repo    # Project (.gh-pr-todo.yml)
+gh pr-todo init --global  # user config dir/gh-pr-todo/config.yml
+```
+
+Prompted locations are:
 
 1. `Project (.gh-pr-todo.yml)` — repository-scoped config, created at the root of the current Git repository; shown in the interactive selector only when run inside a Git repository
 2. `Global (user config dir/gh-pr-todo/config.yml)` — global config, shared across all repos (typically `$XDG_CONFIG_HOME/gh-pr-todo/config.yml` on Linux, falling back to `~/.config/gh-pr-todo/config.yml`; actual path depends on your OS)
 
-If the selected config file already exists, `init` refuses to overwrite it unless `--force` is passed. If you choose the repo-root location and `.github/gh-pr-todo.yml` exists, `init` reports it instead because that narrower config takes precedence over the root project config:
+If the selected config file already exists, `init` refuses to overwrite it unless `--force` is passed. `--force` can be combined with `--repo` or `--global`. `--repo` and `--global` are mutually exclusive, and using both returns an error. If you choose the repo-root location and `.github/gh-pr-todo.yml` exists, `init` reports it instead because that narrower config takes precedence over the root project config:
 
 ```bash
 gh pr-todo init --force
+gh pr-todo init --repo --force
 ```
 
 The default configuration matches the runtime severity policy:

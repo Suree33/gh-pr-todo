@@ -41,6 +41,8 @@ func main() {
 		initFS.SetOutput(io.Discard)
 
 		force := initFS.Bool("force", false, "Overwrite existing config file")
+		repoInit := initFS.Bool("repo", false, "Create repo config at <repo>/.gh-pr-todo.yml without prompting")
+		globalInit := initFS.Bool("global", false, "Create global config at user config dir/gh-pr-todo/config.yml without prompting")
 		helpH := initFS.BoolP("help", "h", false, "Display help information")
 
 		if err := initFS.Parse(os.Args[2:]); err != nil {
@@ -59,15 +61,24 @@ func main() {
 			os.Exit(1)
 		}
 
-		cwd, err := os.Getwd()
+		target, err := initTargetFromFlags(*repoInit, *globalInit)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Error getting current directory:", err)
+			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
+		}
+
+		cwd := ""
+		if target != initTargetGlobal {
+			cwd, err = os.Getwd()
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "Error getting current directory:", err)
+				os.Exit(1)
+			}
 		}
 
 		userConfigDir, _ := os.UserConfigDir()
 
-		if err := runInit(os.Stdin, os.Stdout, cwd, userConfigDir, *force); err != nil {
+		if err := runInit(os.Stdin, os.Stdout, cwd, userConfigDir, *force, target); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
@@ -364,7 +375,7 @@ func printUsage() {
 	fmt.Fprintf(color.Output, "%s\n\n", "View TODO-style comments in the PR diff.")
 	fmt.Fprintf(color.Output, "%s\n", output.Bold("USAGE"))
 	fmt.Fprintf(color.Output, "  %s\n", "gh pr-todo [<number> | <url> | <branch>] [flags]")
-	fmt.Fprintf(color.Output, "  %s\n\n", "gh pr-todo init [--force]")
+	fmt.Fprintf(color.Output, "  %s\n\n", "gh pr-todo init [--repo | --global] [--force]")
 	fmt.Fprintf(color.Output, "%s\n", output.Bold("COMMANDS"))
 	fmt.Fprintf(color.Output, "  %s\n", "init    Create a default config file")
 	fmt.Fprintf(color.Output, "  %s\n\n", "        Run 'gh pr-todo init --help' for details.")
@@ -479,11 +490,36 @@ func runNameOnly(fetcher ghclient.PRFetcher, repo, pr string, policy todotype.Po
 	return newRunResult(todos, policy), nil
 }
 
-func runInit(in io.Reader, out io.Writer, cwd, userConfigDir string, force bool) error {
-	repoPath, repoErr := config.RepoRootPath(cwd)
-	globalPath, globalErr := config.GlobalPath(userConfigDir)
+type initTarget int
 
-	path, err := chooseInitPath(in, out, repoPath, repoErr, globalPath, globalErr)
+const (
+	initTargetPrompt initTarget = iota
+	initTargetRepo
+	initTargetGlobal
+)
+
+func initTargetFromFlags(repoFlag, globalFlag bool) (initTarget, error) {
+	switch {
+	case repoFlag && globalFlag:
+		return initTargetPrompt, fmt.Errorf("cannot use --repo and --global together")
+	case repoFlag:
+		return initTargetRepo, nil
+	case globalFlag:
+		return initTargetGlobal, nil
+	default:
+		return initTargetPrompt, nil
+	}
+}
+
+func runInit(in io.Reader, out io.Writer, cwd, userConfigDir string, force bool, target initTarget) error {
+	globalPath, globalErr := config.GlobalPath(userConfigDir)
+	repoPath := ""
+	repoErr := fmt.Errorf("repo config requires a Git repository")
+	if target != initTargetGlobal {
+		repoPath, repoErr = config.RepoRootPath(cwd)
+	}
+
+	path, err := resolveInitPath(in, out, repoPath, repoErr, globalPath, globalErr, target)
 	if err != nil {
 		return err
 	}
@@ -513,6 +549,22 @@ func ensureNoRepoNarrowConfig(cwd, repoPath string) error {
 		return fmt.Errorf("checking %s: %w", narrowPath, err)
 	}
 	return nil
+}
+
+func resolveInitPath(in io.Reader, out io.Writer, repoPath string, repoErr error, globalPath string, globalErr error, target initTarget) (string, error) {
+	switch target {
+	case initTargetRepo:
+		if repoErr != nil {
+			return "", fmt.Errorf("repo config requires a Git repository")
+		}
+		return repoPath, nil
+	case initTargetGlobal:
+		if globalErr != nil || globalPath == "" {
+			return "", fmt.Errorf("user config directory not available")
+		}
+		return globalPath, nil
+	}
+	return chooseInitPath(in, out, repoPath, repoErr, globalPath, globalErr)
 }
 
 func chooseInitPath(in io.Reader, out io.Writer, repoPath string, repoErr error, globalPath string, globalErr error) (string, error) {
@@ -558,6 +610,11 @@ func initPathOptions(repoPath string, repoErr error, globalPath string, globalEr
 	return options
 }
 
+const (
+	initProjectUnavailableLabel = "Project (unavailable: not inside a Git repository)"
+	initGlobalUnavailableLabel  = "Global (unavailable: user config directory not available)"
+)
+
 func initProjectLabel() string {
 	return "Project (.gh-pr-todo.yml)"
 }
@@ -566,25 +623,21 @@ func initGlobalLabel(path string) string {
 	return fmt.Sprintf("Global (%s)", path)
 }
 
-func initProjectUnavailableLabel() string {
-	return "Project (unavailable: not inside a Git repository)"
-}
-
-func initGlobalUnavailableLabel() string {
-	return "Global (unavailable: user config directory not available)"
-}
-
 func chooseInitPathText(in io.Reader, out io.Writer, repoPath string, repoErr error, globalPath string, globalErr error) (string, error) {
+	if repoErr != nil && (globalErr != nil || globalPath == "") {
+		return "", fmt.Errorf("no config file location available")
+	}
+
 	fmt.Fprintln(out, "Choose config file location:")
 	if repoErr == nil {
 		fmt.Fprintf(out, "  1) %s\n", initProjectLabel())
 	} else {
-		fmt.Fprintf(out, "  1) %s\n", initProjectUnavailableLabel())
+		fmt.Fprintf(out, "  1) %s\n", initProjectUnavailableLabel)
 	}
 	if globalErr == nil && globalPath != "" {
 		fmt.Fprintf(out, "  2) %s\n", initGlobalLabel(globalPath))
 	} else {
-		fmt.Fprintf(out, "  2) %s\n", initGlobalUnavailableLabel())
+		fmt.Fprintf(out, "  2) %s\n", initGlobalUnavailableLabel)
 	}
 	fmt.Fprint(out, "Enter selection: ")
 
@@ -630,9 +683,9 @@ func isTerminalFile(v any) bool {
 }
 
 func printInitUsage(fs *pflag.FlagSet) {
-	fmt.Fprintf(color.Output, "%s\n\n", "Create a default config file with interactive prompts.")
+	fmt.Fprintf(color.Output, "%s\n\n", "Create a default config file.")
 	fmt.Fprintf(color.Output, "%s\n", output.Bold("USAGE"))
-	fmt.Fprintf(color.Output, "  %s\n\n", "gh pr-todo init [--force]")
+	fmt.Fprintf(color.Output, "  %s\n\n", "gh pr-todo init [--repo | --global] [--force]")
 	fmt.Fprintf(color.Output, "%s\n", output.Bold("FLAGS"))
 	fs.VisitAll(func(f *pflag.Flag) {
 		if f.Shorthand != "" {
@@ -643,10 +696,10 @@ func printInitUsage(fs *pflag.FlagSet) {
 	})
 	fmt.Fprintln(color.Output)
 	fmt.Fprintf(color.Output, "%s\n", output.Bold("DESCRIPTION"))
-	fmt.Fprintf(color.Output, "  %s\n", "Creates a default configuration file with an interactive terminal selector or a plain text prompt when redirected.")
-	fmt.Fprintf(color.Output, "  %s\n", "Available locations:")
-	fmt.Fprintf(color.Output, "  %s\n", "  - Project (.gh-pr-todo.yml): repository scope; shown interactively only inside a Git repository")
-	fmt.Fprintf(color.Output, "  %s\n", "  - Global (user config dir/gh-pr-todo/config.yml): global scope")
+	fmt.Fprintf(color.Output, "  %s\n", "Creates a default configuration file. Without --repo or --global, init prompts for a location.")
+	fmt.Fprintf(color.Output, "  %s\n", "Locations:")
+	fmt.Fprintf(color.Output, "  %s\n", "  - --repo: Project (.gh-pr-todo.yml), available inside a Git repository")
+	fmt.Fprintf(color.Output, "  %s\n", "  - --global: user config dir/gh-pr-todo/config.yml")
 	fmt.Fprintf(color.Output, "  %s\n", "")
 	fmt.Fprintf(color.Output, "  %s\n", "Use --force to overwrite an existing project or global config file.")
 	fmt.Fprintf(color.Output, "  %s\n", "If you choose repo scope and .github/gh-pr-todo.yml exists, move or remove it first because it takes precedence.")

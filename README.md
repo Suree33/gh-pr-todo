@@ -85,15 +85,17 @@ Severity overrides can be persisted in YAML configuration files. Config files us
 
 ```yaml
 severity:
-  TYPE: notice|warning|error
+  notice|warning|error: [TYPE...]
 ```
 
 Example (`.github/gh-pr-todo.yml`):
 
 ```yaml
 severity:
-  TODO: warning
-  FIXME: error
+  warning:
+    - TODO
+  error:
+    - FIXME
 ```
 
 #### Config File Paths
@@ -203,11 +205,20 @@ Additional keywords can be defined via [configuration files](#configuration-file
 ```yaml
 # .github/gh-pr-todo.yml
 severity:
-  SECURITY: error
-  PERF: warning
+  error:
+    - SECURITY
+  warning:
+    - PERF
 ```
 
 This configures `SECURITY` and `PERF` as recognized TODO markers.
+
+#### Validation Rules
+
+- Severity keys (`notice`, `warning`, `error`) are case-insensitive.
+- Empty lists (`warning: []`) are allowed and ignored.
+- A TODO type must not appear under multiple severity levels in the same file.
+- The old `TYPE: level` format is not supported.
 
 ## Development
 

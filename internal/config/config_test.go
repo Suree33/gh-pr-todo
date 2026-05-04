@@ -32,7 +32,7 @@ func TestParse(t *testing.T) {
 	})
 
 	t.Run("valid config with all severities", func(t *testing.T) {
-		data := []byte("severity:\n  TODO: notice\n  FIXME: warning\n  BUG: error\n")
+		data := []byte("severity:\n  notice:\n    - TODO\n  warning:\n    - FIXME\n  error:\n    - BUG\n")
 		cfg, err := Parse(data, "test")
 		if err != nil {
 			t.Fatalf("Parse() unexpected error: %v", err)
@@ -48,7 +48,7 @@ func TestParse(t *testing.T) {
 	})
 
 	t.Run("type names normalized to uppercase", func(t *testing.T) {
-		data := []byte("severity:\n  todo: error\n  FixMe: warning\n")
+		data := []byte("severity:\n  error:\n    - todo\n  warning:\n    - FixMe\n")
 		cfg, err := Parse(data, "test")
 		if err != nil {
 			t.Fatalf("Parse() unexpected error: %v", err)
@@ -61,8 +61,8 @@ func TestParse(t *testing.T) {
 		}
 	})
 
-	t.Run("severity values case-insensitive", func(t *testing.T) {
-		data := []byte("severity:\n  TODO: ERROR\n  FIXME: Warning\n  HACK: Notice\n")
+	t.Run("severity keys case-insensitive", func(t *testing.T) {
+		data := []byte("severity:\n  ERROR:\n    - TODO\n  Warning:\n    - FIXME\n  Notice:\n    - HACK\n")
 		cfg, err := Parse(data, "test")
 		if err != nil {
 			t.Fatalf("Parse() unexpected error: %v", err)
@@ -79,7 +79,7 @@ func TestParse(t *testing.T) {
 	})
 
 	t.Run("custom type names allowed", func(t *testing.T) {
-		data := []byte("severity:\n  SECURITY: error\n  PERF: warning\n")
+		data := []byte("severity:\n  error:\n    - SECURITY\n  warning:\n    - PERF\n")
 		cfg, err := Parse(data, "test")
 		if err != nil {
 			t.Fatalf("Parse() unexpected error: %v", err)
@@ -92,11 +92,11 @@ func TestParse(t *testing.T) {
 		}
 	})
 
-	t.Run("invalid severity value returns error", func(t *testing.T) {
-		data := []byte("severity:\n  TODO: critical\n")
+	t.Run("invalid severity key returns error", func(t *testing.T) {
+		data := []byte("severity:\n  critical:\n    - TODO\n")
 		_, err := Parse(data, "test")
 		if err == nil {
-			t.Fatal("Parse() expected error for invalid severity, got nil")
+			t.Fatal("Parse() expected error for invalid severity key, got nil")
 		}
 	})
 
@@ -109,7 +109,7 @@ func TestParse(t *testing.T) {
 	})
 
 	t.Run("empty type name returns error", func(t *testing.T) {
-		data := []byte("severity:\n  \"\": warning\n")
+		data := []byte("severity:\n  warning:\n    - \"\"\n")
 		_, err := Parse(data, "test")
 		if err == nil {
 			t.Fatal("Parse() expected error for empty type, got nil")
@@ -117,9 +117,55 @@ func TestParse(t *testing.T) {
 	})
 
 	t.Run("error message includes source path", func(t *testing.T) {
-		_, err := Parse([]byte("severity:\n  TODO: invalid\n"), "/path/to/config.yml")
-		if err == nil || !contains(err.Error(), "/path/to/config.yml") {
+		_, err := Parse([]byte("severity:\n  critical:\n    - TODO\n"), "/path/to/config.yml")
+		if err == nil || !strings.Contains(err.Error(), "/path/to/config.yml") {
 			t.Fatalf("Parse() error = %v, expected to contain source path", err)
+		}
+	})
+
+	t.Run("empty lists allowed as no-op", func(t *testing.T) {
+		data := []byte("severity:\n  warning: []\n")
+		cfg, err := Parse(data, "test")
+		if err != nil {
+			t.Fatalf("Parse() unexpected error: %v", err)
+		}
+		if len(cfg.Severities) != 0 {
+			t.Fatalf("expected empty config for empty list, got %v", cfg.Severities)
+		}
+	})
+
+	t.Run("old format rejected", func(t *testing.T) {
+		data := []byte("severity:\n  TODO: warning\n")
+		_, err := Parse(data, "test")
+		if err == nil {
+			t.Fatal("Parse() expected error for old format, got nil")
+		}
+	})
+
+	t.Run("duplicate type in same severity is no-op", func(t *testing.T) {
+		data := []byte("severity:\n  warning:\n    - TODO\n    - todo\n")
+		cfg, err := Parse(data, "test")
+		if err != nil {
+			t.Fatalf("Parse() unexpected error: %v", err)
+		}
+		if cfg.Severities["TODO"] != todotype.SeverityWarning {
+			t.Fatalf("expected TODO=warning, got %v", cfg.Severities)
+		}
+	})
+
+	t.Run("duplicate type across severity levels returns error", func(t *testing.T) {
+		data := []byte("severity:\n  warning:\n    - TODO\n  error:\n    - TODO\n")
+		_, err := Parse(data, "test")
+		if err == nil {
+			t.Fatal("Parse() expected error for duplicate type across severity levels, got nil")
+		}
+	})
+
+	t.Run("duplicate detection is case-insensitive", func(t *testing.T) {
+		data := []byte("severity:\n  warning:\n    - TODO\n  error:\n    - todo\n")
+		_, err := Parse(data, "test")
+		if err == nil {
+			t.Fatal("Parse() expected error for case-insensitive duplicate type, got nil")
 		}
 	})
 }
@@ -141,7 +187,7 @@ func TestLoadGlobal(t *testing.T) {
 		if err := os.MkdirAll(globalDir, 0755); err != nil {
 			t.Fatalf("MkdirAll() error: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(globalDir, "config.yml"), []byte("severity:\n  TODO: error\n"), 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(globalDir, "config.yml"), []byte("severity:\n  error:\n    - TODO\n"), 0644); err != nil {
 			t.Fatalf("WriteFile() error: %v", err)
 		}
 
@@ -174,7 +220,7 @@ func TestLoadLocal(t *testing.T) {
 		if err := os.MkdirAll(globalDir, 0755); err != nil {
 			t.Fatalf("MkdirAll() error: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(globalDir, "config.yml"), []byte("severity:\n  TODO: error\n"), 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(globalDir, "config.yml"), []byte("severity:\n  error:\n    - TODO\n"), 0644); err != nil {
 			t.Fatalf("WriteFile() error: %v", err)
 		}
 
@@ -194,7 +240,7 @@ func TestLoadLocal(t *testing.T) {
 		if err := os.MkdirAll(globalDir, 0755); err != nil {
 			t.Fatalf("MkdirAll() error: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(globalDir, "config.yml"), []byte("severity:\n  TODO: error\n  FIXME: notice\n"), 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(globalDir, "config.yml"), []byte("severity:\n  error:\n    - TODO\n  notice:\n    - FIXME\n"), 0644); err != nil {
 			t.Fatalf("WriteFile() error: %v", err)
 		}
 
@@ -206,7 +252,7 @@ func TestLoadLocal(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(repoRoot, ".git"), 0755); err != nil {
 			t.Fatalf("MkdirAll() error: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(repoRoot, ".gh-pr-todo.yml"), []byte("severity:\n  TODO: warning\n"), 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(repoRoot, ".gh-pr-todo.yml"), []byte("severity:\n  warning:\n    - TODO\n"), 0644); err != nil {
 			t.Fatalf("WriteFile() error: %v", err)
 		}
 
@@ -229,7 +275,7 @@ func TestLoadLocal(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(repoRoot, ".git"), []byte("gitdir: /tmp/worktree.git\n"), 0644); err != nil {
 			t.Fatalf("WriteFile() error: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(repoRoot, ".gh-pr-todo.yml"), []byte("severity:\n  TODO: warning\n"), 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(repoRoot, ".gh-pr-todo.yml"), []byte("severity:\n  warning:\n    - TODO\n"), 0644); err != nil {
 			t.Fatalf("WriteFile() error: %v", err)
 		}
 
@@ -247,13 +293,13 @@ func TestLoadLocal(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(repoRoot, ".git"), 0755); err != nil {
 			t.Fatalf("MkdirAll() error: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(repoRoot, ".gh-pr-todo.yml"), []byte("severity:\n  TODO: warning\n"), 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(repoRoot, ".gh-pr-todo.yml"), []byte("severity:\n  warning:\n    - TODO\n"), 0644); err != nil {
 			t.Fatalf("WriteFile() error: %v", err)
 		}
 		if err := os.MkdirAll(filepath.Join(repoRoot, ".github"), 0755); err != nil {
 			t.Fatalf("MkdirAll() error: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(repoRoot, ".github", "gh-pr-todo.yml"), []byte("severity:\n  TODO: error\n"), 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(repoRoot, ".github", "gh-pr-todo.yml"), []byte("severity:\n  error:\n    - TODO\n"), 0644); err != nil {
 			t.Fatalf("WriteFile() error: %v", err)
 		}
 
@@ -272,7 +318,7 @@ func TestLoadLocal(t *testing.T) {
 		if err := os.MkdirAll(globalDir, 0755); err != nil {
 			t.Fatalf("MkdirAll() error: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(globalDir, "config.yml"), []byte("severity:\n  TODO: error\n"), 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(globalDir, "config.yml"), []byte("severity:\n  error:\n    - TODO\n"), 0644); err != nil {
 			t.Fatalf("WriteFile() error: %v", err)
 		}
 
@@ -293,17 +339,13 @@ func TestLoadLocal(t *testing.T) {
 		if err := os.MkdirAll(globalDir, 0755); err != nil {
 			t.Fatalf("MkdirAll() error: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(globalDir, "config.yml"), []byte("severity:\n  TODO: invalid\n"), 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(globalDir, "config.yml"), []byte("severity:\n  critical:\n    - TODO\n"), 0644); err != nil {
 			t.Fatalf("WriteFile() error: %v", err)
 		}
 
 		_, err := LoadLocal(t.TempDir(), userConfigDir)
 		if err == nil {
-			t.Fatal("LoadLocal() expected error for invalid severity, got nil")
+			t.Fatal("LoadLocal() expected error for invalid severity key, got nil")
 		}
 	})
-}
-
-func contains(s, substr string) bool {
-	return strings.Contains(s, substr)
 }

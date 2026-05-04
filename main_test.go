@@ -1268,6 +1268,43 @@ func TestIgnoredTypesExcludeFromOutput(t *testing.T) {
 	})
 }
 
+func TestInitPathOptions(t *testing.T) {
+	repoPath := filepath.Join("repo", ".gh-pr-todo.yml")
+	globalPath := filepath.Join("config", "gh-pr-todo", "config.yml")
+
+	t.Run("includes repo and global when both are available", func(t *testing.T) {
+		options := initPathOptions(repoPath, nil, globalPath, nil)
+		if len(options) != 2 {
+			t.Fatalf("len(options) = %d, want 2", len(options))
+		}
+		if options[0].Value != repoPath {
+			t.Fatalf("first option = %q, want repo path %q", options[0].Value, repoPath)
+		}
+		if options[1].Value != globalPath {
+			t.Fatalf("second option = %q, want global path %q", options[1].Value, globalPath)
+		}
+	})
+
+	t.Run("hides repo option outside git repo", func(t *testing.T) {
+		options := initPathOptions(repoPath, errors.New("requires git repo"), globalPath, nil)
+		if len(options) != 1 {
+			t.Fatalf("len(options) = %d, want 1", len(options))
+		}
+		if options[0].Value != globalPath {
+			t.Fatalf("only option = %q, want global path %q", options[0].Value, globalPath)
+		}
+	})
+}
+
+func TestShouldUseInteractivePrompt(t *testing.T) {
+	if shouldUseInteractivePrompt(strings.NewReader("1\n"), io.Discard) {
+		t.Fatal("shouldUseInteractivePrompt() = true for non-file streams, want false")
+	}
+	if shouldUseInteractivePrompt(os.Stdin, &bytes.Buffer{}) {
+		t.Fatal("shouldUseInteractivePrompt() = true for non-terminal output, want false")
+	}
+}
+
 func TestRunInit(t *testing.T) {
 	t.Run("selection 1 creates repo config", func(t *testing.T) {
 		repoRoot := t.TempDir()
@@ -1282,7 +1319,7 @@ func TestRunInit(t *testing.T) {
 			t.Fatalf("runInit() unexpected error: %v", err)
 		}
 
-		wantPath := filepath.Join(repoRoot, ".github", "gh-pr-todo.yml")
+		wantPath := filepath.Join(repoRoot, ".gh-pr-todo.yml")
 		if _, err := os.Stat(wantPath); err != nil {
 			t.Fatalf("expected file at %s: %v", wantPath, err)
 		}
@@ -1330,11 +1367,7 @@ func TestRunInit(t *testing.T) {
 			t.Fatalf("MkdirAll() error: %v", err)
 		}
 		// Create the config file first
-		configDir := filepath.Join(repoRoot, ".github")
-		if err := os.MkdirAll(configDir, 0755); err != nil {
-			t.Fatalf("MkdirAll() error: %v", err)
-		}
-		configPath := filepath.Join(configDir, "gh-pr-todo.yml")
+		configPath := filepath.Join(repoRoot, ".gh-pr-todo.yml")
 		if err := os.WriteFile(configPath, []byte("original"), 0644); err != nil {
 			t.Fatalf("WriteFile() error: %v", err)
 		}
@@ -1358,17 +1391,42 @@ func TestRunInit(t *testing.T) {
 		}
 	})
 
+	t.Run("existing narrow repo config returns error", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(repoRoot, ".git"), 0755); err != nil {
+			t.Fatalf("MkdirAll() error: %v", err)
+		}
+		narrowDir := filepath.Join(repoRoot, ".github")
+		if err := os.MkdirAll(narrowDir, 0755); err != nil {
+			t.Fatalf("MkdirAll() error: %v", err)
+		}
+		narrowPath := filepath.Join(narrowDir, "gh-pr-todo.yml")
+		if err := os.WriteFile(narrowPath, []byte("original"), 0644); err != nil {
+			t.Fatalf("WriteFile() error: %v", err)
+		}
+
+		var buf bytes.Buffer
+		in := strings.NewReader("1\n")
+		err := runInit(in, &buf, repoRoot, t.TempDir(), false)
+		if err == nil {
+			t.Fatal("runInit() expected error for existing narrow repo config")
+		}
+		if !strings.Contains(err.Error(), narrowPath) || !strings.Contains(err.Error(), "takes precedence") {
+			t.Fatalf("runInit() error = %q, expected narrow config precedence message", err.Error())
+		}
+		rootPath := filepath.Join(repoRoot, ".gh-pr-todo.yml")
+		if _, err := os.Stat(rootPath); !os.IsNotExist(err) {
+			t.Fatalf("root config should not be created, stat err = %v", err)
+		}
+	})
+
 	t.Run("existing file with force overwrites", func(t *testing.T) {
 		repoRoot := t.TempDir()
 		if err := os.MkdirAll(filepath.Join(repoRoot, ".git"), 0755); err != nil {
 			t.Fatalf("MkdirAll() error: %v", err)
 		}
 		// Create the config file first
-		configDir := filepath.Join(repoRoot, ".github")
-		if err := os.MkdirAll(configDir, 0755); err != nil {
-			t.Fatalf("MkdirAll() error: %v", err)
-		}
-		configPath := filepath.Join(configDir, "gh-pr-todo.yml")
+		configPath := filepath.Join(repoRoot, ".gh-pr-todo.yml")
 		if err := os.WriteFile(configPath, []byte("original"), 0644); err != nil {
 			t.Fatalf("WriteFile() error: %v", err)
 		}

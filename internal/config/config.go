@@ -131,6 +131,17 @@ func GlobalPath(userConfigDir string) (string, error) {
 	return filepath.Join(userConfigDir, "gh-pr-todo", "config.yml"), nil
 }
 
+// RepoRootPath returns the path to .gh-pr-todo.yml at the root of the
+// repository containing cwd. Returns an error if cwd is not inside a Git
+// repository.
+func RepoRootPath(cwd string) (string, error) {
+	repoRoot, found := discoverRepoRoot(cwd)
+	if !found {
+		return "", fmt.Errorf("not inside a Git repository")
+	}
+	return filepath.Join(repoRoot, ".gh-pr-todo.yml"), nil
+}
+
 // RepoNarrowPath returns the path to .github/gh-pr-todo.yml at the root of
 // the repository containing cwd. Returns an error if cwd is not inside a
 // Git repository.

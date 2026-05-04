@@ -5,9 +5,11 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Suree33/gh-pr-todo/internal/config"
 	"github.com/Suree33/gh-pr-todo/internal/todotype"
 	"github.com/Suree33/gh-pr-todo/pkg/types"
 	"github.com/fatih/color"
@@ -1049,6 +1051,178 @@ func TestSeverityOverrideAffectsWorkflowAnnotation(t *testing.T) {
 		wantLine := "::error file=foo.go,line=2,title=TODO::// TODO: add bar"
 		if !strings.Contains(out, wantLine) {
 			t.Fatalf("runMain output = %q, expected to contain %q", out, wantLine)
+		}
+	})
+}
+
+func TestRunInit(t *testing.T) {
+	t.Run("selection 1 creates repo config", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(repoRoot, ".git"), 0755); err != nil {
+			t.Fatalf("MkdirAll() error: %v", err)
+		}
+
+		var buf bytes.Buffer
+		in := strings.NewReader("1\n")
+		err := runInit(in, &buf, repoRoot, t.TempDir(), false)
+		if err != nil {
+			t.Fatalf("runInit() unexpected error: %v", err)
+		}
+
+		wantPath := filepath.Join(repoRoot, ".github", "gh-pr-todo.yml")
+		if _, err := os.Stat(wantPath); err != nil {
+			t.Fatalf("expected file at %s: %v", wantPath, err)
+		}
+		if !strings.Contains(buf.String(), "Created") {
+			t.Fatalf("output = %q, expected success message", buf.String())
+		}
+	})
+
+	t.Run("selection 2 creates global config", func(t *testing.T) {
+		userConfigDir := t.TempDir()
+		var buf bytes.Buffer
+		in := strings.NewReader("2\n")
+		err := runInit(in, &buf, t.TempDir(), userConfigDir, false)
+		if err != nil {
+			t.Fatalf("runInit() unexpected error: %v", err)
+		}
+
+		wantPath := filepath.Join(userConfigDir, "gh-pr-todo", "config.yml")
+		if _, err := os.Stat(wantPath); err != nil {
+			t.Fatalf("expected file at %s: %v", wantPath, err)
+		}
+		if !strings.Contains(buf.String(), "Created") {
+			t.Fatalf("output = %q, expected success message", buf.String())
+		}
+	})
+
+	t.Run("selection without trailing newline is accepted", func(t *testing.T) {
+		userConfigDir := t.TempDir()
+		var buf bytes.Buffer
+		in := strings.NewReader("2")
+		err := runInit(in, &buf, t.TempDir(), userConfigDir, false)
+		if err != nil {
+			t.Fatalf("runInit() unexpected error: %v", err)
+		}
+
+		wantPath := filepath.Join(userConfigDir, "gh-pr-todo", "config.yml")
+		if _, err := os.Stat(wantPath); err != nil {
+			t.Fatalf("expected file at %s: %v", wantPath, err)
+		}
+	})
+
+	t.Run("existing file without force returns error", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(repoRoot, ".git"), 0755); err != nil {
+			t.Fatalf("MkdirAll() error: %v", err)
+		}
+		// Create the config file first
+		configDir := filepath.Join(repoRoot, ".github")
+		if err := os.MkdirAll(configDir, 0755); err != nil {
+			t.Fatalf("MkdirAll() error: %v", err)
+		}
+		configPath := filepath.Join(configDir, "gh-pr-todo.yml")
+		if err := os.WriteFile(configPath, []byte("original"), 0644); err != nil {
+			t.Fatalf("WriteFile() error: %v", err)
+		}
+
+		var buf bytes.Buffer
+		in := strings.NewReader("1\n")
+		err := runInit(in, &buf, repoRoot, t.TempDir(), false)
+		if err == nil {
+			t.Fatal("runInit() expected error for existing file without force")
+		}
+		if !strings.Contains(err.Error(), "--force") {
+			t.Fatalf("runInit() error = %q, expected to mention --force", err.Error())
+		}
+		// Content preserved
+		data, err := os.ReadFile(configPath)
+		if err != nil {
+			t.Fatalf("ReadFile() error: %v", err)
+		}
+		if string(data) != "original" {
+			t.Fatalf("expected preserved content %q, got %q", "original", string(data))
+		}
+	})
+
+	t.Run("existing file with force overwrites", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(repoRoot, ".git"), 0755); err != nil {
+			t.Fatalf("MkdirAll() error: %v", err)
+		}
+		// Create the config file first
+		configDir := filepath.Join(repoRoot, ".github")
+		if err := os.MkdirAll(configDir, 0755); err != nil {
+			t.Fatalf("MkdirAll() error: %v", err)
+		}
+		configPath := filepath.Join(configDir, "gh-pr-todo.yml")
+		if err := os.WriteFile(configPath, []byte("original"), 0644); err != nil {
+			t.Fatalf("WriteFile() error: %v", err)
+		}
+
+		var buf bytes.Buffer
+		in := strings.NewReader("1\n")
+		err := runInit(in, &buf, repoRoot, t.TempDir(), true)
+		if err != nil {
+			t.Fatalf("runInit() with force unexpected error: %v", err)
+		}
+		// Content should be default config now
+		data, err := os.ReadFile(configPath)
+		if err != nil {
+			t.Fatalf("ReadFile() error: %v", err)
+		}
+		cfg, err := config.Parse(data, configPath)
+		if err != nil {
+			t.Fatalf("Parse(overwritten) error: %v", err)
+		}
+		if cfg.Severities["TODO"] != todotype.SeverityNotice {
+			t.Fatalf("expected TODO=notice after overwrite, got %v", cfg.Severities["TODO"])
+		}
+	})
+
+	t.Run("invalid selection returns error", func(t *testing.T) {
+		var buf bytes.Buffer
+		in := strings.NewReader("3\n")
+		err := runInit(in, &buf, t.TempDir(), t.TempDir(), false)
+		if err == nil {
+			t.Fatal("runInit() expected error for invalid selection")
+		}
+		if !strings.Contains(err.Error(), "invalid selection") {
+			t.Fatalf("runInit() error = %q, expected 'invalid selection'", err.Error())
+		}
+	})
+
+	t.Run("EOF returns error", func(t *testing.T) {
+		var buf bytes.Buffer
+		in := strings.NewReader("") // EOF on first read
+		err := runInit(in, &buf, t.TempDir(), t.TempDir(), false)
+		if err == nil {
+			t.Fatal("runInit() expected error for EOF")
+		}
+	})
+
+	t.Run("empty input returns error", func(t *testing.T) {
+		var buf bytes.Buffer
+		in := strings.NewReader("\n") // Just newline = empty after trim
+		err := runInit(in, &buf, t.TempDir(), t.TempDir(), false)
+		if err == nil {
+			t.Fatal("runInit() expected error for empty input")
+		}
+		if !strings.Contains(err.Error(), "no input") {
+			t.Fatalf("runInit() error = %q, expected 'no input'", err.Error())
+		}
+	})
+
+	t.Run("local selection outside repo returns error", func(t *testing.T) {
+		var buf bytes.Buffer
+		in := strings.NewReader("1\n")
+		cwd := t.TempDir() // No .git directory
+		err := runInit(in, &buf, cwd, t.TempDir(), false)
+		if err == nil {
+			t.Fatal("runInit() expected error for local outside repo")
+		}
+		if !strings.Contains(err.Error(), "Git repository") {
+			t.Fatalf("runInit() error = %q, expected 'Git repository'", err.Error())
 		}
 	})
 }

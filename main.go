@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"net/url"
@@ -30,6 +31,46 @@ func registerFlags(fs *pflag.FlagSet, repo *string, nameOnly, isCount, isHelp, n
 }
 
 func main() {
+	// Check for init subcommand before the main pflag parsing, so "init"
+	// is not treated as a PR/branch argument.
+	if len(os.Args) > 1 && os.Args[1] == "init" {
+		initFS := pflag.NewFlagSet("gh pr-todo init", pflag.ContinueOnError)
+		initFS.SetOutput(io.Discard)
+
+		force := initFS.Bool("force", false, "Overwrite existing config file")
+		helpH := initFS.BoolP("help", "h", false, "Display help information")
+
+		if err := initFS.Parse(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+
+		if *helpH {
+			printInitUsage(initFS)
+			os.Exit(0)
+		}
+
+		if initFS.NArg() > 0 {
+			fmt.Fprintln(os.Stderr, "gh pr-todo init: unexpected argument")
+			printInitUsage(initFS)
+			os.Exit(1)
+		}
+
+		cwd, err := os.Getwd()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Error getting current directory:", err)
+			os.Exit(1)
+		}
+
+		userConfigDir, _ := os.UserConfigDir()
+
+		if err := runInit(os.Stdin, color.Output, cwd, userConfigDir, *force); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
 	// Use ContinueOnError so we can print a clear error and exit code 1
 	// instead of pflag's default ExitOnError (exit code 2).
 	pflag.CommandLine = pflag.NewFlagSet("gh pr-todo", pflag.ContinueOnError)
@@ -267,7 +308,11 @@ func resolveConfigTarget(repo, pr string) (string, string, bool) {
 func printUsage() {
 	fmt.Fprintf(color.Output, "%s\n\n", "View TODO-style comments in the PR diff.")
 	fmt.Fprintf(color.Output, "%s\n", output.Bold("USAGE"))
-	fmt.Fprintf(color.Output, "  %s\n\n", "gh pr-todo [<number> | <url> | <branch>] [flags]")
+	fmt.Fprintf(color.Output, "  %s\n", "gh pr-todo [<number> | <url> | <branch>] [flags]")
+	fmt.Fprintf(color.Output, "  %s\n\n", "gh pr-todo init [--force]")
+	fmt.Fprintf(color.Output, "%s\n", output.Bold("COMMANDS"))
+	fmt.Fprintf(color.Output, "  %s\n", "init    Create a default config file")
+	fmt.Fprintf(color.Output, "  %s\n\n", "        Run 'gh pr-todo init --help' for details.")
 	fmt.Fprintf(color.Output, "%s\n", output.Bold("FLAGS"))
 	maxLen := 0
 	pflag.VisitAll(func(f *pflag.Flag) {
@@ -368,4 +413,76 @@ func runNameOnly(fetcher ghclient.PRFetcher, repo, pr string, policy todotype.Po
 	}
 	output.PrintFileNames(todos)
 	return newRunResult(todos, policy), nil
+}
+
+func runInit(in io.Reader, out io.Writer, cwd, userConfigDir string, force bool) error {
+	repoPath, repoErr := config.RepoNarrowPath(cwd)
+	globalPath, globalErr := config.GlobalPath(userConfigDir)
+
+	fmt.Fprintln(out, "Choose config file location:")
+	if repoErr == nil {
+		fmt.Fprintln(out, "  1) .github/gh-pr-todo.yml")
+	} else {
+		fmt.Fprintln(out, "  1) .github/gh-pr-todo.yml (requires a Git repository)")
+	}
+	if globalErr == nil {
+		fmt.Fprintf(out, "  2) %s\n", globalPath)
+	} else {
+		fmt.Fprintln(out, "  2) user config directory not available")
+	}
+	fmt.Fprint(out, "Enter selection: ")
+
+	reader := bufio.NewReader(in)
+	line, err := reader.ReadString('\n')
+	if err != nil && (err != io.EOF || line == "") {
+		return fmt.Errorf("failed to read input: %w", err)
+	}
+	line = strings.TrimSpace(line)
+
+	var path string
+	switch line {
+	case "1":
+		if repoErr != nil {
+			return fmt.Errorf("repo config requires a Git repository")
+		}
+		path = repoPath
+	case "2":
+		if globalErr != nil || globalPath == "" {
+			return fmt.Errorf("user config directory not available")
+		}
+		path = globalPath
+	case "":
+		return fmt.Errorf("no input received")
+	default:
+		return fmt.Errorf("invalid selection %q: enter 1 or 2", line)
+	}
+
+	if err := config.WriteDefault(path, force); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(out, "Created %s\n", path)
+	return nil
+}
+
+func printInitUsage(fs *pflag.FlagSet) {
+	fmt.Fprintf(color.Output, "%s\n\n", "Create a default config file with interactive prompts.")
+	fmt.Fprintf(color.Output, "%s\n", output.Bold("USAGE"))
+	fmt.Fprintf(color.Output, "  %s\n\n", "gh pr-todo init [--force]")
+	fmt.Fprintf(color.Output, "%s\n", output.Bold("FLAGS"))
+	fs.VisitAll(func(f *pflag.Flag) {
+		if f.Shorthand != "" {
+			fmt.Fprintf(color.Output, "  -%s, --%s  %s\n", f.Shorthand, f.Name, f.Usage)
+		} else {
+			fmt.Fprintf(color.Output, "      --%s  %s\n", f.Name, f.Usage)
+		}
+	})
+	fmt.Fprintln(color.Output)
+	fmt.Fprintf(color.Output, "%s\n", output.Bold("DESCRIPTION"))
+	fmt.Fprintf(color.Output, "  %s\n", "Interactively creates a default configuration file at one of:")
+	fmt.Fprintf(color.Output, "  %s\n", "  - .github/gh-pr-todo.yml (repository scope)")
+	fmt.Fprintf(color.Output, "  %s\n", "  - user config dir/gh-pr-todo/config.yml (global scope)")
+	fmt.Fprintf(color.Output, "  %s\n", "")
+	fmt.Fprintf(color.Output, "  %s\n", "Use --force to overwrite an existing config file.")
+	fmt.Fprintln(color.Output)
 }

@@ -900,6 +900,19 @@ func TestSeverityFlagParsing(t *testing.T) {
 		}
 	})
 
+	t.Run("duplicate types in one flag collapse case-insensitively", func(t *testing.T) {
+		s := newSeverityFlag()
+		if err := s.Set("warning=todo,TODO"); err != nil {
+			t.Fatalf("Set(warning=todo,TODO) unexpected error: %v", err)
+		}
+		if len(s.assignments) != 1 {
+			t.Fatalf("len(assignments) = %d, want 1", len(s.assignments))
+		}
+		if got := s.assignments["TODO"]; got != todotype.SeverityWarning {
+			t.Fatalf("assignments[TODO] = %q, want %q", got, todotype.SeverityWarning)
+		}
+	})
+
 	t.Run("whitespace trimming", func(t *testing.T) {
 		s := newSeverityFlag()
 		if err := s.Set("  warning  =  TODO  ,  HACK  "); err != nil {

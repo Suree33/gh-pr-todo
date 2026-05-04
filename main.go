@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	"github.com/Suree33/gh-pr-todo/internal/config"
 	ghclient "github.com/Suree33/gh-pr-todo/internal/github"
 	"github.com/Suree33/gh-pr-todo/internal/output"
+	"github.com/Suree33/gh-pr-todo/internal/policyresolve"
 	"github.com/Suree33/gh-pr-todo/internal/todotype"
 	"github.com/Suree33/gh-pr-todo/pkg/types"
 	"github.com/briandowns/spinner"
@@ -130,79 +130,39 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Build policy with config and CLI overrides.
-	// Precedence: default < config < CLI.
-	// CLI ignore and severity have highest priority.
-	policy := todotype.DefaultPolicy()
-
 	userConfigDir := ""
 	if dir, err := os.UserConfigDir(); err == nil {
 		userConfigDir = dir
 	}
 
-	configRepo, configPR, useRemoteConfig := resolveConfigTarget(repo, pr)
-
-	var (
-		cfg config.Config
-		err error
-	)
-	if useRemoteConfig {
-		fetcher := ghclient.NewClient()
-		remoteCfg, err := config.LoadRemote(fetcher, configRepo, configPR)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "Remote config error:", err)
-			os.Exit(1)
-		}
-
-		if remoteCfg.Found {
-			cfg = remoteCfg
-		} else {
-			cfg, err = config.LoadGlobal(userConfigDir)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "Config error:", err)
-				os.Exit(1)
-			}
-		}
-	} else {
-		cwd, err := os.Getwd()
+	target := policyresolve.ResolveTarget(repo, pr)
+	cwd := ""
+	if !target.UseRemote {
+		var err error
+		cwd, err = os.Getwd()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error getting current directory:", err)
 			os.Exit(1)
 		}
-		cfg, err = config.LoadLocal(cwd, userConfigDir)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "Config error:", err)
-			os.Exit(1)
-		}
-	}
-
-	// Apply severity overrides from config
-	if len(cfg.Severities) > 0 {
-		policy = policy.WithSeverities(cfg.Severities)
-	}
-
-	// Apply CLI severity overrides (highest priority)
-	if len(sevFlag.assignments) > 0 {
-		policy = policy.WithSeverities(sevFlag.assignments)
-	}
-
-	// Collect all ignored types from config and CLI, then apply together
-	ignoredSet := make(map[string]bool)
-	for t := range cfg.Ignored {
-		ignoredSet[t] = true
-	}
-	for _, t := range ignFlag.types {
-		ignoredSet[t] = true
-	}
-	if len(ignoredSet) > 0 {
-		ignored := make([]string, 0, len(ignoredSet))
-		for t := range ignoredSet {
-			ignored = append(ignored, t)
-		}
-		policy = policy.WithIgnoredTypes(ignored)
 	}
 
 	fetcher := ghclient.NewClient()
+	policy, err := policyresolve.Resolve(fetcher, policyresolve.Options{
+		Target:        target,
+		CWD:           cwd,
+		UserConfigDir: userConfigDir,
+		CLISeverities: sevFlag.assignments,
+		CLIIgnored:    ignFlag.types,
+	})
+	if err != nil {
+		if target.UseRemote {
+			fmt.Fprintln(os.Stderr, "Remote config error:", err)
+		} else {
+			fmt.Fprintln(os.Stderr, "Config error:", err)
+		}
+		os.Exit(1)
+	}
+
 	gha := isGitHubActions()
 	var result runResult
 	switch {
@@ -350,25 +310,6 @@ func isGitHubActions() bool {
 	v := strings.TrimSpace(os.Getenv("GITHUB_ACTIONS"))
 	ok, err := strconv.ParseBool(v)
 	return err == nil && ok
-}
-
-func resolveConfigTarget(repo, pr string) (string, string, bool) {
-	if repo != "" {
-		return repo, pr, true
-	}
-	parsed, err := url.Parse(pr)
-	if err != nil || parsed.Host == "" {
-		return "", pr, false
-	}
-	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
-	if len(parts) != 4 || parts[2] != "pull" || parts[0] == "" || parts[1] == "" || parts[3] == "" {
-		return "", pr, false
-	}
-	repo = parts[0] + "/" + parts[1]
-	if parsed.Host != "github.com" {
-		repo = parsed.Host + "/" + repo
-	}
-	return repo, parts[3], true
 }
 
 func printUsage() {

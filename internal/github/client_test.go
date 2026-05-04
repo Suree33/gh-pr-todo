@@ -410,7 +410,7 @@ func TestFetchChangedFileContents(t *testing.T) {
 		}
 	})
 
-	t.Run("host-qualified repo passes hostname when fetching changed file contents", func(t *testing.T) {
+	t.Run("escapes changed file path and ref when fetching raw contents", func(t *testing.T) {
 		metaJSON := `{"headRefOid":"feature/sha","headRepository":{"nameWithOwner":"o/r"}}`
 		var calls [][]string
 		withGhExec(t, func(args ...string) (bytes.Buffer, bytes.Buffer, error) {
@@ -422,14 +422,25 @@ func TestFetchChangedFileContents(t *testing.T) {
 			return *bytes.NewBufferString("file contents"), bytes.Buffer{}, nil
 		})
 
-		_, err := NewClient().FetchChangedFileContents("github.example.com/o/r", "1", sampleDiff)
+		diffWithEscapedPath := `diff --git a/.github/gh pr-todo.yml b/.github/gh pr-todo.yml
+index 0000000..1111111 100644
+--- a/.github/gh pr-todo.yml
++++ b/.github/gh pr-todo.yml
+@@ -1,1 +1,2 @@
+ severity:
++  TODO: error
+`
+		got, err := NewClient().FetchChangedFileContents("github.example.com/o/r", "1", diffWithEscapedPath)
 		if err != nil {
 			t.Fatalf("FetchChangedFileContents() unexpected error: %v", err)
+		}
+		if string(got[".github/gh pr-todo.yml"]) != "file contents" {
+			t.Fatalf("got %v", got)
 		}
 		if len(calls) != 2 {
 			t.Fatalf("expected 2 calls, got %d: %v", len(calls), calls)
 		}
-		want := []string{"api", "repos/o/r/contents/foo.go?ref=feature%2Fsha", "-H", "Accept: application/vnd.github.raw+json", "--hostname", "github.example.com"}
+		want := []string{"api", "repos/o/r/contents/.github/gh%20pr-todo.yml?ref=feature%2Fsha", "-H", "Accept: application/vnd.github.raw+json", "--hostname", "github.example.com"}
 		if !reflect.DeepEqual(calls[1], want) {
 			t.Fatalf("second call args = %v, expected %v", calls[1], want)
 		}

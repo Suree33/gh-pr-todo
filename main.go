@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/huh/v2"
 	"github.com/Suree33/gh-pr-todo/internal/config"
 	ghclient "github.com/Suree33/gh-pr-todo/internal/github"
 	"github.com/Suree33/gh-pr-todo/internal/output"
@@ -65,7 +67,7 @@ func main() {
 
 		userConfigDir, _ := os.UserConfigDir()
 
-		if err := runInit(os.Stdin, color.Output, cwd, userConfigDir, *force); err != nil {
+		if err := runInit(os.Stdin, os.Stdout, cwd, userConfigDir, *force); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
@@ -423,7 +425,7 @@ func printUsage() {
 	fmt.Fprintf(color.Output, "  %s\n", "  3. remote default branch config")
 	fmt.Fprintf(color.Output, "  %s\n", "  4. global config (fallback only when no remote config exists)")
 	fmt.Fprintf(color.Output, "  %s\n", "  5. CLI --severity and --ignore flags (highest priority)")
-	fmt.Fprintf(color.Output, "  %s\n\n", "Example config:  # .github/gh-pr-todo.yml\nseverity:\n  warning:\n    - TODO\n  error:\n    - FIXME\nignore:\n  - NOTE")
+	fmt.Fprintf(color.Output, "  %s\n\n", "Example config:  # .gh-pr-todo.yml\nseverity:\n  warning:\n    - TODO\n  error:\n    - FIXME\nignore:\n  - NOTE")
 }
 
 func runMain(fetcher ghclient.PRFetcher, repo, pr string, groupBy types.GroupBy, gha bool, policy todotype.Policy) (runResult, error) {
@@ -478,45 +480,18 @@ func runNameOnly(fetcher ghclient.PRFetcher, repo, pr string, policy todotype.Po
 }
 
 func runInit(in io.Reader, out io.Writer, cwd, userConfigDir string, force bool) error {
-	repoPath, repoErr := config.RepoNarrowPath(cwd)
+	repoPath, repoErr := config.RepoRootPath(cwd)
 	globalPath, globalErr := config.GlobalPath(userConfigDir)
 
-	fmt.Fprintln(out, "Choose config file location:")
-	if repoErr == nil {
-		fmt.Fprintln(out, "  1) .github/gh-pr-todo.yml")
-	} else {
-		fmt.Fprintln(out, "  1) .github/gh-pr-todo.yml (requires a Git repository)")
+	path, err := chooseInitPath(in, out, repoPath, repoErr, globalPath, globalErr)
+	if err != nil {
+		return err
 	}
-	if globalErr == nil {
-		fmt.Fprintf(out, "  2) %s\n", globalPath)
-	} else {
-		fmt.Fprintln(out, "  2) user config directory not available")
-	}
-	fmt.Fprint(out, "Enter selection: ")
 
-	reader := bufio.NewReader(in)
-	line, err := reader.ReadString('\n')
-	if err != nil && (err != io.EOF || line == "") {
-		return fmt.Errorf("failed to read input: %w", err)
-	}
-	line = strings.TrimSpace(line)
-
-	var path string
-	switch line {
-	case "1":
-		if repoErr != nil {
-			return fmt.Errorf("repo config requires a Git repository")
+	if path == repoPath {
+		if err := ensureNoRepoNarrowConfig(cwd, repoPath); err != nil {
+			return err
 		}
-		path = repoPath
-	case "2":
-		if globalErr != nil || globalPath == "" {
-			return fmt.Errorf("user config directory not available")
-		}
-		path = globalPath
-	case "":
-		return fmt.Errorf("no input received")
-	default:
-		return fmt.Errorf("invalid selection %q: enter 1 or 2", line)
 	}
 
 	if err := config.WriteDefault(path, force); err != nil {
@@ -525,6 +500,133 @@ func runInit(in io.Reader, out io.Writer, cwd, userConfigDir string, force bool)
 
 	fmt.Fprintf(out, "Created %s\n", path)
 	return nil
+}
+
+func ensureNoRepoNarrowConfig(cwd, repoPath string) error {
+	narrowPath, err := config.RepoNarrowPath(cwd)
+	if err != nil {
+		return nil
+	}
+	if _, err := os.Stat(narrowPath); err == nil {
+		return fmt.Errorf("%s already exists and takes precedence over %s; remove it or move it before running init", narrowPath, repoPath)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("checking %s: %w", narrowPath, err)
+	}
+	return nil
+}
+
+func chooseInitPath(in io.Reader, out io.Writer, repoPath string, repoErr error, globalPath string, globalErr error) (string, error) {
+	if shouldUseInteractivePrompt(in, out) {
+		return chooseInitPathInteractive(in, out, repoPath, repoErr, globalPath, globalErr)
+	}
+	return chooseInitPathText(in, out, repoPath, repoErr, globalPath, globalErr)
+}
+
+func chooseInitPathInteractive(in io.Reader, out io.Writer, repoPath string, repoErr error, globalPath string, globalErr error) (string, error) {
+	options := initPathOptions(repoPath, repoErr, globalPath, globalErr)
+	if len(options) == 0 {
+		return "", fmt.Errorf("no config file location available")
+	}
+
+	path := options[0].Value
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Choose config file location").
+				Options(options...).
+				Value(&path),
+		),
+	).WithInput(in).WithOutput(out)
+
+	if err := form.Run(); err != nil {
+		if errors.Is(err, huh.ErrUserAborted) {
+			return "", fmt.Errorf("init aborted")
+		}
+		return "", fmt.Errorf("failed to read input: %w", err)
+	}
+	return path, nil
+}
+
+func initPathOptions(repoPath string, repoErr error, globalPath string, globalErr error) []huh.Option[string] {
+	options := make([]huh.Option[string], 0, 2)
+	if repoErr == nil {
+		options = append(options, huh.NewOption(initProjectLabel(), repoPath))
+	}
+	if globalErr == nil && globalPath != "" {
+		options = append(options, huh.NewOption(initGlobalLabel(globalPath), globalPath))
+	}
+	return options
+}
+
+func initProjectLabel() string {
+	return "Project (.gh-pr-todo.yml)"
+}
+
+func initGlobalLabel(path string) string {
+	return fmt.Sprintf("Global (%s)", path)
+}
+
+func initProjectUnavailableLabel() string {
+	return "Project (unavailable: not inside a Git repository)"
+}
+
+func initGlobalUnavailableLabel() string {
+	return "Global (unavailable: user config directory not available)"
+}
+
+func chooseInitPathText(in io.Reader, out io.Writer, repoPath string, repoErr error, globalPath string, globalErr error) (string, error) {
+	fmt.Fprintln(out, "Choose config file location:")
+	if repoErr == nil {
+		fmt.Fprintf(out, "  1) %s\n", initProjectLabel())
+	} else {
+		fmt.Fprintf(out, "  1) %s\n", initProjectUnavailableLabel())
+	}
+	if globalErr == nil && globalPath != "" {
+		fmt.Fprintf(out, "  2) %s\n", initGlobalLabel(globalPath))
+	} else {
+		fmt.Fprintf(out, "  2) %s\n", initGlobalUnavailableLabel())
+	}
+	fmt.Fprint(out, "Enter selection: ")
+
+	reader := bufio.NewReader(in)
+	line, err := reader.ReadString('\n')
+	if err != nil && (err != io.EOF || line == "") {
+		return "", fmt.Errorf("failed to read input: %w", err)
+	}
+	line = strings.TrimSpace(line)
+
+	switch line {
+	case "1":
+		if repoErr != nil {
+			return "", fmt.Errorf("repo config requires a Git repository")
+		}
+		return repoPath, nil
+	case "2":
+		if globalErr != nil || globalPath == "" {
+			return "", fmt.Errorf("user config directory not available")
+		}
+		return globalPath, nil
+	case "":
+		return "", fmt.Errorf("no input received")
+	default:
+		return "", fmt.Errorf("invalid selection %q: enter 1 or 2", line)
+	}
+}
+
+func shouldUseInteractivePrompt(in io.Reader, out io.Writer) bool {
+	return isTerminalFile(in) && isTerminalFile(out)
+}
+
+func isTerminalFile(v any) bool {
+	file, ok := v.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := file.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
 }
 
 func printInitUsage(fs *pflag.FlagSet) {
@@ -541,10 +643,12 @@ func printInitUsage(fs *pflag.FlagSet) {
 	})
 	fmt.Fprintln(color.Output)
 	fmt.Fprintf(color.Output, "%s\n", output.Bold("DESCRIPTION"))
-	fmt.Fprintf(color.Output, "  %s\n", "Interactively creates a default configuration file at one of:")
-	fmt.Fprintf(color.Output, "  %s\n", "  - .github/gh-pr-todo.yml (repository scope)")
-	fmt.Fprintf(color.Output, "  %s\n", "  - user config dir/gh-pr-todo/config.yml (global scope)")
+	fmt.Fprintf(color.Output, "  %s\n", "Creates a default configuration file with an interactive terminal selector or a plain text prompt when redirected.")
+	fmt.Fprintf(color.Output, "  %s\n", "Available locations:")
+	fmt.Fprintf(color.Output, "  %s\n", "  - Project (.gh-pr-todo.yml): repository scope; shown interactively only inside a Git repository")
+	fmt.Fprintf(color.Output, "  %s\n", "  - Global (user config dir/gh-pr-todo/config.yml): global scope")
 	fmt.Fprintf(color.Output, "  %s\n", "")
-	fmt.Fprintf(color.Output, "  %s\n", "Use --force to overwrite an existing config file.")
+	fmt.Fprintf(color.Output, "  %s\n", "Use --force to overwrite an existing project or global config file.")
+	fmt.Fprintf(color.Output, "  %s\n", "If you choose repo scope and .github/gh-pr-todo.yml exists, move or remove it first because it takes precedence.")
 	fmt.Fprintln(color.Output)
 }

@@ -85,7 +85,7 @@ gh pr-todo --ignore NOTE,HACK
 
 ### Initializing Configuration
 
-Use `gh pr-todo init` to create a default configuration file interactively:
+Use `gh pr-todo init` to create a default configuration file. In a terminal, it uses an interactive selector; when input or output is redirected, it falls back to the plain text prompt:
 
 ```bash
 gh pr-todo init
@@ -93,10 +93,10 @@ gh pr-todo init
 
 You will be prompted to choose a location for the config file:
 
-1. `.github/gh-pr-todo.yml` — repository-scoped config, created at the root of the current Git repository
-2. User config directory — global config, shared across all repos (typically `$XDG_CONFIG_HOME/gh-pr-todo/config.yml` on Linux, falling back to `~/.config/gh-pr-todo/config.yml`; actual path depends on your OS)
+1. `Project (.gh-pr-todo.yml)` — repository-scoped config, created at the root of the current Git repository; shown in the interactive selector only when run inside a Git repository
+2. `Global (user config dir/gh-pr-todo/config.yml)` — global config, shared across all repos (typically `$XDG_CONFIG_HOME/gh-pr-todo/config.yml` on Linux, falling back to `~/.config/gh-pr-todo/config.yml`; actual path depends on your OS)
 
-If a config file already exists, `init` refuses to overwrite it unless `--force` is passed:
+If the selected config file already exists, `init` refuses to overwrite it unless `--force` is passed. If you choose the repo-root location and `.github/gh-pr-todo.yml` exists, `init` reports it instead because that narrower config takes precedence over the root project config:
 
 ```bash
 gh pr-todo init --force
@@ -129,7 +129,7 @@ ignore:
   - TYPE
 ```
 
-Example (`.github/gh-pr-todo.yml`):
+Example (`.gh-pr-todo.yml`):
 
 ```yaml
 severity:
@@ -182,7 +182,7 @@ The `ignore` config key lists marker types to exclude entirely from detection. I
 Example:
 
 ```yaml
-# .github/gh-pr-todo.yml
+# .gh-pr-todo.yml
 severity:
   warning:
     - TODO
@@ -281,7 +281,7 @@ The tool recognizes TODO-style comments in various formats:
 Additional keywords can be defined via [configuration files](#configuration-file) or the `--severity` CLI flag. Any custom type assigned a severity will be detected in PR diffs alongside the default keywords. For example:
 
 ```yaml
-# .github/gh-pr-todo.yml
+# .gh-pr-todo.yml
 severity:
   error:
     - SECURITY

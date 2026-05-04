@@ -323,6 +323,50 @@ func TestGlobalPath(t *testing.T) {
 	})
 }
 
+func TestRepoRootPath(t *testing.T) {
+	t.Run("non-repo directory errors", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		_, err := RepoRootPath(tmpDir)
+		if err == nil {
+			t.Fatal("RepoRootPath() expected error for non-repo directory")
+		}
+	})
+
+	t.Run("repo root returns .gh-pr-todo.yml", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(repoRoot, ".git"), 0755); err != nil {
+			t.Fatalf("MkdirAll() error: %v", err)
+		}
+		path, err := RepoRootPath(repoRoot)
+		if err != nil {
+			t.Fatalf("RepoRootPath() unexpected error: %v", err)
+		}
+		want := filepath.Join(repoRoot, ".gh-pr-todo.yml")
+		if path != want {
+			t.Fatalf("RepoRootPath() = %q, want %q", path, want)
+		}
+	})
+
+	t.Run("nested subdirectory inside repo still returns root path", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(repoRoot, ".git"), 0755); err != nil {
+			t.Fatalf("MkdirAll() error: %v", err)
+		}
+		subdir := filepath.Join(repoRoot, "a", "b", "c")
+		if err := os.MkdirAll(subdir, 0755); err != nil {
+			t.Fatalf("MkdirAll() error: %v", err)
+		}
+		path, err := RepoRootPath(subdir)
+		if err != nil {
+			t.Fatalf("RepoRootPath() unexpected error: %v", err)
+		}
+		want := filepath.Join(repoRoot, ".gh-pr-todo.yml")
+		if path != want {
+			t.Fatalf("RepoRootPath() = %q, want %q", path, want)
+		}
+	})
+}
+
 func TestRepoNarrowPath(t *testing.T) {
 	t.Run("non-repo directory errors", func(t *testing.T) {
 		tmpDir := t.TempDir()

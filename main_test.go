@@ -740,6 +740,7 @@ func TestPrintUsage(t *testing.T) {
 		"View TODO-style comments in the PR diff.",
 		"USAGE",
 		"gh pr-todo [<number> | <url> | <branch>] [flags]",
+		"gh pr-todo init [--repo | --global] [--force]",
 		"FLAGS",
 		"--repo",
 		"Display only names of the files containing TODO-style comments",
@@ -784,6 +785,38 @@ func TestPrintUsage(t *testing.T) {
 	for _, want := range wantContain {
 		if !strings.Contains(out, want) {
 			t.Fatalf("printUsage() output = %q, expected to contain %q", out, want)
+		}
+	}
+}
+
+func TestPrintInitUsage(t *testing.T) {
+	initFS := pflag.NewFlagSet("gh pr-todo init", pflag.ContinueOnError)
+	initFS.Bool("force", false, "Overwrite existing config file")
+	initFS.Bool("repo", false, "Create repo config at <repo>/.gh-pr-todo.yml without prompting")
+	initFS.Bool("global", false, "Create global config at user config dir/gh-pr-todo/config.yml without prompting")
+	initFS.BoolP("help", "h", false, "Display help information")
+
+	var out string
+	stdout := captureStdout(t, func() {
+		out = captureColorOutput(t, func() {
+			printInitUsage(initFS)
+		})
+	})
+
+	if stdout != "" {
+		t.Fatalf("printInitUsage() leaked to os.Stdout: %q", stdout)
+	}
+	wantContain := []string{
+		"gh pr-todo init [--repo | --global] [--force]",
+		"Create repo config at <repo>/.gh-pr-todo.yml without prompting",
+		"Create global config at user config dir/gh-pr-todo/config.yml without prompting",
+		"--repo: Project (.gh-pr-todo.yml)",
+		"--global: user config dir/gh-pr-todo/config.yml",
+		"Use --force to overwrite",
+	}
+	for _, want := range wantContain {
+		if !strings.Contains(out, want) {
+			t.Fatalf("printInitUsage() output = %q, expected to contain %q", out, want)
 		}
 	}
 }
@@ -1322,18 +1355,38 @@ func TestChooseInitPathTextLabels(t *testing.T) {
 		}
 	})
 
-	t.Run("unavailable locations include scoped messages", func(t *testing.T) {
+	t.Run("unavailable repo location includes scoped message", func(t *testing.T) {
 		var buf bytes.Buffer
-		_, err := chooseInitPathText(strings.NewReader(""), &buf, repoPath, errors.New("not inside a Git repository"), globalPath, errors.New("user config directory is empty"))
-		if err == nil {
-			t.Fatal("chooseInitPathText() expected input error")
+		_, err := chooseInitPathText(strings.NewReader("2\n"), &buf, repoPath, errors.New("not inside a Git repository"), globalPath, nil)
+		if err != nil {
+			t.Fatalf("chooseInitPathText() unexpected error: %v", err)
 		}
 		output := buf.String()
 		if !strings.Contains(output, "1) Project (unavailable: not inside a Git repository)") {
 			t.Fatalf("output = %q, expected unavailable project label", output)
 		}
+	})
+
+	t.Run("unavailable global location includes scoped message", func(t *testing.T) {
+		var buf bytes.Buffer
+		_, err := chooseInitPathText(strings.NewReader("1\n"), &buf, repoPath, nil, globalPath, errors.New("user config directory is empty"))
+		if err != nil {
+			t.Fatalf("chooseInitPathText() unexpected error: %v", err)
+		}
+		output := buf.String()
 		if !strings.Contains(output, "2) Global (unavailable: user config directory not available)") {
 			t.Fatalf("output = %q, expected unavailable global label", output)
+		}
+	})
+
+	t.Run("no available locations returns before prompting", func(t *testing.T) {
+		var buf bytes.Buffer
+		_, err := chooseInitPathText(strings.NewReader(""), &buf, repoPath, errors.New("not inside a Git repository"), "", errors.New("user config directory is empty"))
+		if err == nil || !strings.Contains(err.Error(), "no config file location available") {
+			t.Fatalf("chooseInitPathText() error = %v, want no location error", err)
+		}
+		if strings.Contains(buf.String(), "Enter selection") {
+			t.Fatalf("output = %q, expected no prompt", buf.String())
 		}
 	})
 }
@@ -1347,6 +1400,39 @@ func TestShouldUseInteractivePrompt(t *testing.T) {
 	}
 }
 
+func TestInitTargetFromFlags(t *testing.T) {
+	tests := []struct {
+		name       string
+		repoFlag   bool
+		globalFlag bool
+		want       initTarget
+		wantErr    string
+	}{
+		{name: "prompt", want: initTargetPrompt},
+		{name: "repo", repoFlag: true, want: initTargetRepo},
+		{name: "global", globalFlag: true, want: initTargetGlobal},
+		{name: "conflict", repoFlag: true, globalFlag: true, wantErr: "cannot use --repo and --global together"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := initTargetFromFlags(tt.repoFlag, tt.globalFlag)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("initTargetFromFlags() error = %v, want %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("initTargetFromFlags() unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("initTargetFromFlags() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRunInit(t *testing.T) {
 	t.Run("selection 1 creates repo config", func(t *testing.T) {
 		repoRoot := t.TempDir()
@@ -1356,7 +1442,7 @@ func TestRunInit(t *testing.T) {
 
 		var buf bytes.Buffer
 		in := strings.NewReader("1\n")
-		err := runInit(in, &buf, repoRoot, t.TempDir(), false)
+		err := runInit(in, &buf, repoRoot, t.TempDir(), false, initTargetPrompt)
 		if err != nil {
 			t.Fatalf("runInit() unexpected error: %v", err)
 		}
@@ -1374,7 +1460,7 @@ func TestRunInit(t *testing.T) {
 		userConfigDir := t.TempDir()
 		var buf bytes.Buffer
 		in := strings.NewReader("2\n")
-		err := runInit(in, &buf, t.TempDir(), userConfigDir, false)
+		err := runInit(in, &buf, t.TempDir(), userConfigDir, false, initTargetPrompt)
 		if err != nil {
 			t.Fatalf("runInit() unexpected error: %v", err)
 		}
@@ -1388,11 +1474,71 @@ func TestRunInit(t *testing.T) {
 		}
 	})
 
+	t.Run("repo target creates repo config without prompt", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(repoRoot, ".git"), 0755); err != nil {
+			t.Fatalf("MkdirAll() error: %v", err)
+		}
+
+		var buf bytes.Buffer
+		err := runInit(strings.NewReader(""), &buf, repoRoot, t.TempDir(), false, initTargetRepo)
+		if err != nil {
+			t.Fatalf("runInit() unexpected error: %v", err)
+		}
+
+		wantPath := filepath.Join(repoRoot, ".gh-pr-todo.yml")
+		if _, err := os.Stat(wantPath); err != nil {
+			t.Fatalf("expected file at %s: %v", wantPath, err)
+		}
+		if strings.Contains(buf.String(), "Enter selection") {
+			t.Fatalf("output = %q, expected no prompt", buf.String())
+		}
+	})
+
+	t.Run("global target creates global config without prompt", func(t *testing.T) {
+		userConfigDir := t.TempDir()
+		var buf bytes.Buffer
+		err := runInit(strings.NewReader(""), &buf, filepath.Join(t.TempDir(), "missing"), userConfigDir, false, initTargetGlobal)
+		if err != nil {
+			t.Fatalf("runInit() unexpected error: %v", err)
+		}
+
+		wantPath := filepath.Join(userConfigDir, "gh-pr-todo", "config.yml")
+		if _, err := os.Stat(wantPath); err != nil {
+			t.Fatalf("expected file at %s: %v", wantPath, err)
+		}
+		if strings.Contains(buf.String(), "Enter selection") {
+			t.Fatalf("output = %q, expected no prompt", buf.String())
+		}
+	})
+
+	t.Run("repo target outside repo returns error without prompt", func(t *testing.T) {
+		var buf bytes.Buffer
+		err := runInit(strings.NewReader(""), &buf, t.TempDir(), t.TempDir(), false, initTargetRepo)
+		if err == nil || !strings.Contains(err.Error(), "Git repository") {
+			t.Fatalf("runInit() error = %v, want Git repository error", err)
+		}
+		if strings.Contains(buf.String(), "Enter selection") {
+			t.Fatalf("output = %q, expected no prompt", buf.String())
+		}
+	})
+
+	t.Run("global target without user config dir returns error without prompt", func(t *testing.T) {
+		var buf bytes.Buffer
+		err := runInit(strings.NewReader(""), &buf, filepath.Join(t.TempDir(), "missing"), "", false, initTargetGlobal)
+		if err == nil || !strings.Contains(err.Error(), "user config directory not available") {
+			t.Fatalf("runInit() error = %v, want user config dir error", err)
+		}
+		if strings.Contains(buf.String(), "Enter selection") {
+			t.Fatalf("output = %q, expected no prompt", buf.String())
+		}
+	})
+
 	t.Run("selection without trailing newline is accepted", func(t *testing.T) {
 		userConfigDir := t.TempDir()
 		var buf bytes.Buffer
 		in := strings.NewReader("2")
-		err := runInit(in, &buf, t.TempDir(), userConfigDir, false)
+		err := runInit(in, &buf, t.TempDir(), userConfigDir, false, initTargetPrompt)
 		if err != nil {
 			t.Fatalf("runInit() unexpected error: %v", err)
 		}
@@ -1416,7 +1562,7 @@ func TestRunInit(t *testing.T) {
 
 		var buf bytes.Buffer
 		in := strings.NewReader("1\n")
-		err := runInit(in, &buf, repoRoot, t.TempDir(), false)
+		err := runInit(in, &buf, repoRoot, t.TempDir(), false, initTargetPrompt)
 		if err == nil {
 			t.Fatal("runInit() expected error for existing file without force")
 		}
@@ -1449,7 +1595,7 @@ func TestRunInit(t *testing.T) {
 
 		var buf bytes.Buffer
 		in := strings.NewReader("1\n")
-		err := runInit(in, &buf, repoRoot, t.TempDir(), false)
+		err := runInit(in, &buf, repoRoot, t.TempDir(), false, initTargetPrompt)
 		if err == nil {
 			t.Fatal("runInit() expected error for existing narrow repo config")
 		}
@@ -1475,7 +1621,7 @@ func TestRunInit(t *testing.T) {
 
 		var buf bytes.Buffer
 		in := strings.NewReader("1\n")
-		err := runInit(in, &buf, repoRoot, t.TempDir(), true)
+		err := runInit(in, &buf, repoRoot, t.TempDir(), true, initTargetPrompt)
 		if err != nil {
 			t.Fatalf("runInit() with force unexpected error: %v", err)
 		}
@@ -1496,7 +1642,7 @@ func TestRunInit(t *testing.T) {
 	t.Run("invalid selection returns error", func(t *testing.T) {
 		var buf bytes.Buffer
 		in := strings.NewReader("3\n")
-		err := runInit(in, &buf, t.TempDir(), t.TempDir(), false)
+		err := runInit(in, &buf, t.TempDir(), t.TempDir(), false, initTargetPrompt)
 		if err == nil {
 			t.Fatal("runInit() expected error for invalid selection")
 		}
@@ -1508,7 +1654,7 @@ func TestRunInit(t *testing.T) {
 	t.Run("EOF returns error", func(t *testing.T) {
 		var buf bytes.Buffer
 		in := strings.NewReader("") // EOF on first read
-		err := runInit(in, &buf, t.TempDir(), t.TempDir(), false)
+		err := runInit(in, &buf, t.TempDir(), t.TempDir(), false, initTargetPrompt)
 		if err == nil {
 			t.Fatal("runInit() expected error for EOF")
 		}
@@ -1517,7 +1663,7 @@ func TestRunInit(t *testing.T) {
 	t.Run("empty input returns error", func(t *testing.T) {
 		var buf bytes.Buffer
 		in := strings.NewReader("\n") // Just newline = empty after trim
-		err := runInit(in, &buf, t.TempDir(), t.TempDir(), false)
+		err := runInit(in, &buf, t.TempDir(), t.TempDir(), false, initTargetPrompt)
 		if err == nil {
 			t.Fatal("runInit() expected error for empty input")
 		}
@@ -1530,7 +1676,7 @@ func TestRunInit(t *testing.T) {
 		var buf bytes.Buffer
 		in := strings.NewReader("1\n")
 		cwd := t.TempDir() // No .git directory
-		err := runInit(in, &buf, cwd, t.TempDir(), false)
+		err := runInit(in, &buf, cwd, t.TempDir(), false, initTargetPrompt)
 		if err == nil {
 			t.Fatal("runInit() expected error for local outside repo")
 		}

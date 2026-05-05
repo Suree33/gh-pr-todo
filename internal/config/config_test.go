@@ -210,6 +210,20 @@ func TestParse(t *testing.T) {
 		}
 	})
 
+	t.Run("ignore list duplicates are case-insensitive no-op", func(t *testing.T) {
+		data := []byte("ignore:\n  - note\n  - NOTE\n")
+		cfg, err := Parse(data, "test")
+		if err != nil {
+			t.Fatalf("Parse() unexpected error: %v", err)
+		}
+		if !cfg.Ignored["NOTE"] {
+			t.Fatalf("expected NOTE ignored, got %v", cfg.Ignored)
+		}
+		if len(cfg.Ignored) != 1 {
+			t.Fatalf("len(Ignored) = %d, want 1", len(cfg.Ignored))
+		}
+	})
+
 	t.Run("empty ignore list results in nil map", func(t *testing.T) {
 		data := []byte("ignore: []")
 		cfg, err := Parse(data, "test")

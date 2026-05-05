@@ -256,29 +256,24 @@ func (s *severityFlag) Set(val string) error {
 		return fmt.Errorf("invalid --severity %q: type list is empty", val)
 	}
 
-	var severity todotype.Severity
-	switch strings.ToLower(levelStr) {
-	case "notice":
-		severity = todotype.SeverityNotice
-	case "warning":
-		severity = todotype.SeverityWarning
-	case "error":
-		severity = todotype.SeverityError
-	default:
+	severity, ok := todotype.ParseSeverity(levelStr)
+	if !ok {
 		return fmt.Errorf("invalid severity level %q in --severity %q: allowed values are notice, warning, error", levelStr, val)
 	}
 
+	rawTypes := strings.Split(typesStr, ",")
+	normalizedTypes := todotype.NormalizeConfiguredTypes(rawTypes)
 	pending := make(map[string]todotype.Severity)
-	for _, typ := range strings.Split(typesStr, ",") {
-		t := strings.TrimSpace(typ)
-		if t == "" {
+	for i, normalizedType := range normalizedTypes {
+		rawType := strings.TrimSpace(rawTypes[i])
+		if normalizedType == "" {
 			return fmt.Errorf("invalid --severity %q: type name is empty", val)
 		}
-		if strings.ContainsRune(t, '=') {
-			return fmt.Errorf("invalid --severity %q: type name %q must not contain '='", val, t)
+		if strings.ContainsRune(rawType, '=') {
+			return fmt.Errorf("invalid --severity %q: type name %q must not contain '='", val, rawType)
 		}
 		// Normalize type to uppercase for last-wins semantics across flags.
-		pending[strings.ToUpper(t)] = severity
+		pending[normalizedType] = severity
 	}
 	for todoType, severity := range pending {
 		s.assignments[todoType] = severity
@@ -304,15 +299,17 @@ func (f *ignoreFlag) String() string {
 }
 
 func (f *ignoreFlag) Set(val string) error {
-	for _, typ := range strings.Split(val, ",") {
-		t := strings.TrimSpace(typ)
-		if t == "" {
+	rawTypes := strings.Split(val, ",")
+	normalizedTypes := todotype.NormalizeConfiguredTypes(rawTypes)
+	for i, normalizedType := range normalizedTypes {
+		rawType := strings.TrimSpace(rawTypes[i])
+		if normalizedType == "" {
 			return fmt.Errorf("invalid --ignore %q: type name is empty", val)
 		}
-		if strings.ContainsRune(t, '=') {
-			return fmt.Errorf("invalid --ignore %q: type name %q must not contain '='", val, t)
+		if strings.ContainsRune(rawType, '=') {
+			return fmt.Errorf("invalid --ignore %q: type name %q must not contain '='", val, rawType)
 		}
-		f.types = append(f.types, strings.ToUpper(t))
+		f.types = append(f.types, normalizedType)
 	}
 	return nil
 }

@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Suree33/gh-pr-todo/internal/config"
 	ghclient "github.com/Suree33/gh-pr-todo/internal/github"
 	"github.com/Suree33/gh-pr-todo/internal/initcmd"
 	"github.com/Suree33/gh-pr-todo/internal/output"

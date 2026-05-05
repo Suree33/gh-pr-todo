@@ -5,26 +5,13 @@
 
 ### Features
 
-* add configurable severity overrides ([#82](https://github.com/Suree33/gh-pr-todo/issues/82)) ([f133189](https://github.com/Suree33/gh-pr-todo/commit/f1331899cc5f5b3e9afa659241cc5065161601c6))
-* **config:** add ignored TODO marker types ([#91](https://github.com/Suree33/gh-pr-todo/issues/91)) ([f18d2a7](https://github.com/Suree33/gh-pr-todo/commit/f18d2a74cb2e00a120a769f1fac2dde7f37fd338))
-* **config:** add severity configuration files ([#85](https://github.com/Suree33/gh-pr-todo/issues/85)) ([6a82424](https://github.com/Suree33/gh-pr-todo/commit/6a82424671310e95fab47fdab2e80da00532c260))
-* **config:** use severity bucket lists ([#86](https://github.com/Suree33/gh-pr-todo/issues/86)) ([446e491](https://github.com/Suree33/gh-pr-todo/commit/446e4918f2fd11399230af4a543bdd0093ef0564))
-* **init:** add config initialization command ([#87](https://github.com/Suree33/gh-pr-todo/issues/87)) ([3bedb36](https://github.com/Suree33/gh-pr-todo/commit/3bedb36b9e571628e70a0959a97fd0f3a04f0faa))
-* **init:** add huh config location selector ([#92](https://github.com/Suree33/gh-pr-todo/issues/92)) ([c2317c8](https://github.com/Suree33/gh-pr-todo/commit/c2317c811a87d4e4253f7b3a71d4b8785088af0a))
-* **init:** add non-interactive config targets ([#93](https://github.com/Suree33/gh-pr-todo/issues/93)) ([7552301](https://github.com/Suree33/gh-pr-todo/commit/7552301adbdb5a00d220356f596c85b144b19622))
-
-
-### Bug Fixes
-
-* **cli:** remove unused config import ([#104](https://github.com/Suree33/gh-pr-todo/issues/104)) ([23825a9](https://github.com/Suree33/gh-pr-todo/commit/23825a98f296611c50dac11aacedc170a04a5816))
+* Added configurable TODO severity policies with config files, bucket lists, per-marker overrides, ignored marker types, shared config/policy resolution, and related CLI cleanup. ([#82](https://github.com/Suree33/gh-pr-todo/pull/82), [#85](https://github.com/Suree33/gh-pr-todo/pull/85), [#86](https://github.com/Suree33/gh-pr-todo/pull/86), [#91](https://github.com/Suree33/gh-pr-todo/pull/91), [#100](https://github.com/Suree33/gh-pr-todo/pull/100), [#101](https://github.com/Suree33/gh-pr-todo/pull/101), [#104](https://github.com/Suree33/gh-pr-todo/pull/104))
+* Added `gh pr-todo init` for creating configuration files, with interactive location selection, non-interactive targets, and a dedicated init workflow. ([#87](https://github.com/Suree33/gh-pr-todo/pull/87), [#92](https://github.com/Suree33/gh-pr-todo/pull/92), [#93](https://github.com/Suree33/gh-pr-todo/pull/93), [#102](https://github.com/Suree33/gh-pr-todo/pull/102))
 
 
 ### Refactoring
 
-* centralize configured TODO severity parsing ([#100](https://github.com/Suree33/gh-pr-todo/issues/100)) ([85cb23c](https://github.com/Suree33/gh-pr-todo/commit/85cb23c714fcf8112f56a8fd627d4a1712435396))
-* extract config and policy resolution from main ([#101](https://github.com/Suree33/gh-pr-todo/issues/101)) ([c78ddbe](https://github.com/Suree33/gh-pr-todo/commit/c78ddbebaa0c6cd42f2666d3cfefb74974420d0d))
-* **github:** deduplicate raw file content fetching ([#99](https://github.com/Suree33/gh-pr-todo/issues/99)) ([2a6d540](https://github.com/Suree33/gh-pr-todo/commit/2a6d540cfb9c5de4fda4c20aef06d1cfa4545a6f))
-* **init:** extract init command workflow ([#102](https://github.com/Suree33/gh-pr-todo/issues/102)) ([4bddafd](https://github.com/Suree33/gh-pr-todo/commit/4bddafd9a820661fa68922db9ca0a6b86924d956))
+* Deduplicated GitHub raw file content fetching. ([#99](https://github.com/Suree33/gh-pr-todo/pull/99))
 
 
 ### Miscellaneous Chores

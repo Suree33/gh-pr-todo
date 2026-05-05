@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.1.0](https://github.com/Suree33/gh-pr-todo/compare/v1.0.2...v1.1.0) (2026-05-05)
+
+
+### Features
+
+* Added configurable TODO severity policies with config files, bucket lists, per-marker overrides, ignored marker types, shared config/policy resolution, and related CLI cleanup. ([#82](https://github.com/Suree33/gh-pr-todo/pull/82), [#85](https://github.com/Suree33/gh-pr-todo/pull/85), [#86](https://github.com/Suree33/gh-pr-todo/pull/86), [#91](https://github.com/Suree33/gh-pr-todo/pull/91), [#100](https://github.com/Suree33/gh-pr-todo/pull/100), [#101](https://github.com/Suree33/gh-pr-todo/pull/101), [#104](https://github.com/Suree33/gh-pr-todo/pull/104))
+* Added `gh pr-todo init` for creating configuration files, with interactive location selection, non-interactive targets, and a dedicated init workflow. ([#87](https://github.com/Suree33/gh-pr-todo/pull/87), [#92](https://github.com/Suree33/gh-pr-todo/pull/92), [#93](https://github.com/Suree33/gh-pr-todo/pull/93), [#102](https://github.com/Suree33/gh-pr-todo/pull/102))
+
+
+### Refactoring
+
+* Deduplicated GitHub raw file content fetching. ([#99](https://github.com/Suree33/gh-pr-todo/pull/99))
+
+
+### Miscellaneous Chores
+
+* **deps:** bump github.com/odvcencio/gotreesitter ([#103](https://github.com/Suree33/gh-pr-todo/issues/103)) ([5cdf90d](https://github.com/Suree33/gh-pr-todo/commit/5cdf90da5aba2e8425290ca122b8a89ce426b583))
+
 ## [1.0.2](https://github.com/Suree33/gh-pr-todo/compare/v1.0.1...v1.0.2) (2026-05-03)
 
 

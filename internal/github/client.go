@@ -100,9 +100,7 @@ func (c *Client) FetchRemoteConfigRefs(repo, pr string) (config.RemoteConfigRefs
 	return refs, nil
 }
 
-// FetchFileAtRef fetches a file from the repository at a specific ref.
-// Returns (nil, false, nil) when the file is not found (404).
-func (c *Client) FetchFileAtRef(repo, path, ref string) ([]byte, bool, error) {
+func (c *Client) fetchRawFileContent(repo, path, ref string) ([]byte, string, error) {
 	host, repoPath := splitHostRepo(repo)
 	segments := strings.Split(path, "/")
 	for i, s := range segments {
@@ -114,13 +112,20 @@ func (c *Client) FetchFileAtRef(repo, path, ref string) ([]byte, bool, error) {
 		args = append(args, "--hostname", host)
 	}
 	out, stdErr, err := ghExec(args...)
+	return out.Bytes(), stdErr.String(), err
+}
+
+// FetchFileAtRef fetches a file from the repository at a specific ref.
+// Returns (nil, false, nil) when the file is not found (404).
+func (c *Client) FetchFileAtRef(repo, path, ref string) ([]byte, bool, error) {
+	data, stderr, err := c.fetchRawFileContent(repo, path, ref)
 	if err != nil {
-		if strings.Contains(stdErr.String(), "Not Found") || strings.Contains(stdErr.String(), "404") {
+		if strings.Contains(stderr, "Not Found") || strings.Contains(stderr, "404") {
 			return nil, false, nil
 		}
 		return nil, false, fmt.Errorf("fetching %s from %s at %s: %w", path, repo, ref, err)
 	}
-	return out.Bytes(), true, nil
+	return data, true, nil
 }
 
 func splitHostRepo(repo string) (string, string) {
@@ -198,21 +203,12 @@ func (c *Client) FetchChangedFileContents(repo, pr, diffOutput string) (map[stri
 	files := make(map[string][]byte, len(paths))
 	var failedPaths []string
 	for _, p := range paths {
-		segments := strings.Split(p, "/")
-		for i, s := range segments {
-			segments[i] = url.PathEscape(s)
-		}
-		apiPath := fmt.Sprintf("repos/%s/contents/%s?ref=%s", nwo, strings.Join(segments, "/"), url.QueryEscape(sha))
-		args := []string{"api", apiPath, "-H", "Accept: application/vnd.github.raw+json"}
-		if host != "" {
-			args = append(args, "--hostname", host)
-		}
-		out, _, err := ghExec(args...)
+		data, _, err := c.fetchRawFileContent(withHost(host, nwo), p, sha)
 		if err != nil {
 			failedPaths = append(failedPaths, p)
 			continue
 		}
-		files[p] = out.Bytes()
+		files[p] = data
 	}
 	if len(failedPaths) > 0 {
 		return files, fmt.Errorf("failed to fetch %d changed file(s)", len(failedPaths))

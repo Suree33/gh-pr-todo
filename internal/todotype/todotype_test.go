@@ -324,6 +324,40 @@ func TestSeverityErrorConstant(t *testing.T) {
 	}
 }
 
+func TestParseSeverity(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  Severity
+		ok    bool
+	}{
+		{name: "notice", input: "notice", want: SeverityNotice, ok: true},
+		{name: "warning with spaces", input: "  warning  ", want: SeverityWarning, ok: true},
+		{name: "error mixed case", input: "Error", want: SeverityError, ok: true},
+		{name: "invalid", input: "critical", ok: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := ParseSeverity(tt.input)
+			if ok != tt.ok {
+				t.Fatalf("ParseSeverity(%q) ok = %v, want %v", tt.input, ok, tt.ok)
+			}
+			if got != tt.want {
+				t.Fatalf("ParseSeverity(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeConfiguredTypes(t *testing.T) {
+	got := NormalizeConfiguredTypes([]string{" todo ", "FixMe", "a=b", "  "})
+	want := []string{"TODO", "FIXME", "A=B", ""}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("NormalizeConfiguredTypes() = %v, want %v", got, want)
+	}
+}
+
 func TestDefaultTypes(t *testing.T) {
 	got := DefaultTypes()
 	want := []string{"BUG", "FIXME", "HACK", "NOTE", "TODO", "XXX"}

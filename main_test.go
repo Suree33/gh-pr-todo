@@ -675,36 +675,6 @@ func TestRunFunctionsReturnZeroOnError(t *testing.T) {
 	})
 }
 
-func TestResolveConfigTarget(t *testing.T) {
-	t.Run("explicit repo uses remote config", func(t *testing.T) {
-		repo, pr, remote := resolveConfigTarget("owner/repo", "123")
-		if !remote || repo != "owner/repo" || pr != "123" {
-			t.Fatalf("resolveConfigTarget() = (%q, %q, %v)", repo, pr, remote)
-		}
-	})
-
-	t.Run("github PR URL uses remote config", func(t *testing.T) {
-		repo, pr, remote := resolveConfigTarget("", "https://github.com/owner/repo/pull/123")
-		if !remote || repo != "owner/repo" || pr != "123" {
-			t.Fatalf("resolveConfigTarget() = (%q, %q, %v)", repo, pr, remote)
-		}
-	})
-
-	t.Run("host-qualified PR URL preserves host", func(t *testing.T) {
-		repo, pr, remote := resolveConfigTarget("", "https://github.example.com/owner/repo/pull/123")
-		if !remote || repo != "github.example.com/owner/repo" || pr != "123" {
-			t.Fatalf("resolveConfigTarget() = (%q, %q, %v)", repo, pr, remote)
-		}
-	})
-
-	t.Run("non-PR URL stays local", func(t *testing.T) {
-		repo, pr, remote := resolveConfigTarget("", "https://github.com/owner/repo/issues/123")
-		if remote || repo != "" || pr != "https://github.com/owner/repo/issues/123" {
-			t.Fatalf("resolveConfigTarget() = (%q, %q, %v)", repo, pr, remote)
-		}
-	})
-}
-
 func TestPrintUsage(t *testing.T) {
 	originalCommandLine := pflag.CommandLine
 	pflag.CommandLine = pflag.NewFlagSet("gh pr-todo", pflag.ContinueOnError)
@@ -897,6 +867,19 @@ func TestSeverityFlagParsing(t *testing.T) {
 		}
 		if got := s.assignments["FIXME"]; got != todotype.SeverityError {
 			t.Fatalf("assignments[FIXME] = %q, want %q", got, todotype.SeverityError)
+		}
+	})
+
+	t.Run("duplicate types in one flag collapse case-insensitively", func(t *testing.T) {
+		s := newSeverityFlag()
+		if err := s.Set("warning=todo,TODO"); err != nil {
+			t.Fatalf("Set(warning=todo,TODO) unexpected error: %v", err)
+		}
+		if len(s.assignments) != 1 {
+			t.Fatalf("len(assignments) = %d, want 1", len(s.assignments))
+		}
+		if got := s.assignments["TODO"]; got != todotype.SeverityWarning {
+			t.Fatalf("assignments[TODO] = %q, want %q", got, todotype.SeverityWarning)
 		}
 	})
 

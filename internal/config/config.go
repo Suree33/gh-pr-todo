@@ -41,26 +41,16 @@ func Parse(data []byte, source string) (Config, error) {
 		severities := make(map[string]todotype.Severity)
 		for levelStr, typeNames := range f.Severity {
 			normalizedLevel := strings.ToLower(strings.TrimSpace(levelStr))
-
-			var sev todotype.Severity
-			switch normalizedLevel {
-			case "notice":
-				sev = todotype.SeverityNotice
-			case "warning":
-				sev = todotype.SeverityWarning
-			case "error":
-				sev = todotype.SeverityError
-			default:
+			sev, ok := todotype.ParseSeverity(levelStr)
+			if !ok {
 				return Config{}, fmt.Errorf("%s: invalid severity key %q: allowed values are notice, warning, error",
 					source, levelStr)
 			}
 
-			for _, typeName := range typeNames {
-				normalizedType := strings.TrimSpace(typeName)
+			for _, normalizedType := range todotype.NormalizeConfiguredTypes(typeNames) {
 				if normalizedType == "" {
 					return Config{}, fmt.Errorf("%s: type name is empty in severity %q", source, normalizedLevel)
 				}
-				normalizedType = strings.ToUpper(normalizedType)
 
 				if existingSev, exists := severities[normalizedType]; exists && existingSev != sev {
 					return Config{}, fmt.Errorf("%s: type %q appears under multiple severity levels (%s and %s)",
@@ -75,8 +65,7 @@ func Parse(data []byte, source string) (Config, error) {
 	// Parse ignore list
 	if len(f.Ignore) > 0 {
 		ignored := make(map[string]bool)
-		for _, t := range f.Ignore {
-			normalized := strings.ToUpper(strings.TrimSpace(t))
+		for _, normalized := range todotype.NormalizeConfiguredTypes(f.Ignore) {
 			if normalized == "" {
 				return Config{}, fmt.Errorf("%s: type name is empty in ignore list", source)
 			}

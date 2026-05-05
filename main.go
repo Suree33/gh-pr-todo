@@ -1,20 +1,18 @@
 package main
 
 import (
-	"bufio"
-	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
-	"charm.land/huh/v2"
 	"github.com/Suree33/gh-pr-todo/internal/config"
 	ghclient "github.com/Suree33/gh-pr-todo/internal/github"
+	"github.com/Suree33/gh-pr-todo/internal/initcmd"
 	"github.com/Suree33/gh-pr-todo/internal/output"
+	"github.com/Suree33/gh-pr-todo/internal/policyresolve"
 	"github.com/Suree33/gh-pr-todo/internal/todotype"
 	"github.com/Suree33/gh-pr-todo/pkg/types"
 	"github.com/briandowns/spinner"
@@ -37,52 +35,14 @@ func main() {
 	// Check for init subcommand before the main pflag parsing, so "init"
 	// is not treated as a PR/branch argument.
 	if len(os.Args) > 1 && os.Args[1] == "init" {
-		initFS := pflag.NewFlagSet("gh pr-todo init", pflag.ContinueOnError)
-		initFS.SetOutput(io.Discard)
-
-		force := initFS.Bool("force", false, "Overwrite existing config file")
-		repoInit := initFS.Bool("repo", false, "Create repo config at <repo>/.gh-pr-todo.yml without prompting")
-		globalInit := initFS.Bool("global", false, "Create global config at user config dir/gh-pr-todo/config.yml without prompting")
-		helpH := initFS.BoolP("help", "h", false, "Display help information")
-
-		if err := initFS.Parse(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-
-		if *helpH {
-			printInitUsage(initFS)
-			os.Exit(0)
-		}
-
-		if initFS.NArg() > 0 {
-			fmt.Fprintln(os.Stderr, "gh pr-todo init: unexpected argument")
-			printInitUsage(initFS)
-			os.Exit(1)
-		}
-
-		target, err := initTargetFromFlags(*repoInit, *globalInit)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-
-		cwd := ""
-		if target != initTargetGlobal {
-			cwd, err = os.Getwd()
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "Error getting current directory:", err)
-				os.Exit(1)
-			}
-		}
-
-		userConfigDir, _ := os.UserConfigDir()
-
-		if err := runInit(os.Stdin, os.Stdout, cwd, userConfigDir, *force, target); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		os.Exit(0)
+		os.Exit(initcmd.Command{
+			In:            os.Stdin,
+			Out:           os.Stdout,
+			ErrOut:        os.Stderr,
+			UsageOut:      color.Output,
+			Getwd:         os.Getwd,
+			UserConfigDir: os.UserConfigDir,
+		}.Execute(os.Args[2:]))
 	}
 
 	// Use ContinueOnError so we can print a clear error and exit code 1
@@ -130,79 +90,39 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Build policy with config and CLI overrides.
-	// Precedence: default < config < CLI.
-	// CLI ignore and severity have highest priority.
-	policy := todotype.DefaultPolicy()
-
 	userConfigDir := ""
 	if dir, err := os.UserConfigDir(); err == nil {
 		userConfigDir = dir
 	}
 
-	configRepo, configPR, useRemoteConfig := resolveConfigTarget(repo, pr)
-
-	var (
-		cfg config.Config
-		err error
-	)
-	if useRemoteConfig {
-		fetcher := ghclient.NewClient()
-		remoteCfg, err := config.LoadRemote(fetcher, configRepo, configPR)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "Remote config error:", err)
-			os.Exit(1)
-		}
-
-		if remoteCfg.Found {
-			cfg = remoteCfg
-		} else {
-			cfg, err = config.LoadGlobal(userConfigDir)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "Config error:", err)
-				os.Exit(1)
-			}
-		}
-	} else {
-		cwd, err := os.Getwd()
+	target := policyresolve.ResolveTarget(repo, pr)
+	cwd := ""
+	if !target.UseRemote {
+		var err error
+		cwd, err = os.Getwd()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error getting current directory:", err)
 			os.Exit(1)
 		}
-		cfg, err = config.LoadLocal(cwd, userConfigDir)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "Config error:", err)
-			os.Exit(1)
-		}
-	}
-
-	// Apply severity overrides from config
-	if len(cfg.Severities) > 0 {
-		policy = policy.WithSeverities(cfg.Severities)
-	}
-
-	// Apply CLI severity overrides (highest priority)
-	if len(sevFlag.assignments) > 0 {
-		policy = policy.WithSeverities(sevFlag.assignments)
-	}
-
-	// Collect all ignored types from config and CLI, then apply together
-	ignoredSet := make(map[string]bool)
-	for t := range cfg.Ignored {
-		ignoredSet[t] = true
-	}
-	for _, t := range ignFlag.types {
-		ignoredSet[t] = true
-	}
-	if len(ignoredSet) > 0 {
-		ignored := make([]string, 0, len(ignoredSet))
-		for t := range ignoredSet {
-			ignored = append(ignored, t)
-		}
-		policy = policy.WithIgnoredTypes(ignored)
 	}
 
 	fetcher := ghclient.NewClient()
+	policy, err := policyresolve.Resolve(fetcher, policyresolve.Options{
+		Target:        target,
+		CWD:           cwd,
+		UserConfigDir: userConfigDir,
+		CLISeverities: sevFlag.assignments,
+		CLIIgnored:    ignFlag.types,
+	})
+	if err != nil {
+		if target.UseRemote {
+			fmt.Fprintln(os.Stderr, "Remote config error:", err)
+		} else {
+			fmt.Fprintln(os.Stderr, "Config error:", err)
+		}
+		os.Exit(1)
+	}
+
 	gha := isGitHubActions()
 	var result runResult
 	switch {
@@ -256,29 +176,24 @@ func (s *severityFlag) Set(val string) error {
 		return fmt.Errorf("invalid --severity %q: type list is empty", val)
 	}
 
-	var severity todotype.Severity
-	switch strings.ToLower(levelStr) {
-	case "notice":
-		severity = todotype.SeverityNotice
-	case "warning":
-		severity = todotype.SeverityWarning
-	case "error":
-		severity = todotype.SeverityError
-	default:
+	severity, ok := todotype.ParseSeverity(levelStr)
+	if !ok {
 		return fmt.Errorf("invalid severity level %q in --severity %q: allowed values are notice, warning, error", levelStr, val)
 	}
 
+	rawTypes := strings.Split(typesStr, ",")
+	normalizedTypes := todotype.NormalizeConfiguredTypes(rawTypes)
 	pending := make(map[string]todotype.Severity)
-	for _, typ := range strings.Split(typesStr, ",") {
-		t := strings.TrimSpace(typ)
-		if t == "" {
+	for i, normalizedType := range normalizedTypes {
+		rawType := strings.TrimSpace(rawTypes[i])
+		if normalizedType == "" {
 			return fmt.Errorf("invalid --severity %q: type name is empty", val)
 		}
-		if strings.ContainsRune(t, '=') {
-			return fmt.Errorf("invalid --severity %q: type name %q must not contain '='", val, t)
+		if strings.ContainsRune(rawType, '=') {
+			return fmt.Errorf("invalid --severity %q: type name %q must not contain '='", val, rawType)
 		}
 		// Normalize type to uppercase for last-wins semantics across flags.
-		pending[strings.ToUpper(t)] = severity
+		pending[normalizedType] = severity
 	}
 	for todoType, severity := range pending {
 		s.assignments[todoType] = severity
@@ -304,15 +219,17 @@ func (f *ignoreFlag) String() string {
 }
 
 func (f *ignoreFlag) Set(val string) error {
-	for _, typ := range strings.Split(val, ",") {
-		t := strings.TrimSpace(typ)
-		if t == "" {
+	rawTypes := strings.Split(val, ",")
+	normalizedTypes := todotype.NormalizeConfiguredTypes(rawTypes)
+	for i, normalizedType := range normalizedTypes {
+		rawType := strings.TrimSpace(rawTypes[i])
+		if normalizedType == "" {
 			return fmt.Errorf("invalid --ignore %q: type name is empty", val)
 		}
-		if strings.ContainsRune(t, '=') {
-			return fmt.Errorf("invalid --ignore %q: type name %q must not contain '='", val, t)
+		if strings.ContainsRune(rawType, '=') {
+			return fmt.Errorf("invalid --ignore %q: type name %q must not contain '='", val, rawType)
 		}
-		f.types = append(f.types, strings.ToUpper(t))
+		f.types = append(f.types, normalizedType)
 	}
 	return nil
 }
@@ -350,25 +267,6 @@ func isGitHubActions() bool {
 	v := strings.TrimSpace(os.Getenv("GITHUB_ACTIONS"))
 	ok, err := strconv.ParseBool(v)
 	return err == nil && ok
-}
-
-func resolveConfigTarget(repo, pr string) (string, string, bool) {
-	if repo != "" {
-		return repo, pr, true
-	}
-	parsed, err := url.Parse(pr)
-	if err != nil || parsed.Host == "" {
-		return "", pr, false
-	}
-	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
-	if len(parts) != 4 || parts[2] != "pull" || parts[0] == "" || parts[1] == "" || parts[3] == "" {
-		return "", pr, false
-	}
-	repo = parts[0] + "/" + parts[1]
-	if parsed.Host != "github.com" {
-		repo = parsed.Host + "/" + repo
-	}
-	return repo, parts[3], true
 }
 
 func printUsage() {
@@ -497,220 +395,4 @@ func runNameOnly(fetcher ghclient.PRFetcher, repo, pr string, policy todotype.Po
 	}
 	output.PrintFileNames(todos)
 	return newRunResult(todos, policy), nil
-}
-
-type initTarget int
-
-const (
-	initTargetPrompt initTarget = iota
-	initTargetRepo
-	initTargetGlobal
-)
-
-func initTargetFromFlags(repoFlag, globalFlag bool) (initTarget, error) {
-	switch {
-	case repoFlag && globalFlag:
-		return initTargetPrompt, fmt.Errorf("cannot use --repo and --global together")
-	case repoFlag:
-		return initTargetRepo, nil
-	case globalFlag:
-		return initTargetGlobal, nil
-	default:
-		return initTargetPrompt, nil
-	}
-}
-
-func runInit(in io.Reader, out io.Writer, cwd, userConfigDir string, force bool, target initTarget) error {
-	globalPath, globalErr := config.GlobalPath(userConfigDir)
-	repoPath := ""
-	repoErr := fmt.Errorf("repo config requires a Git repository")
-	if target != initTargetGlobal {
-		repoPath, repoErr = config.RepoRootPath(cwd)
-	}
-
-	path, err := resolveInitPath(in, out, repoPath, repoErr, globalPath, globalErr, target)
-	if err != nil {
-		return err
-	}
-
-	if path == repoPath {
-		if err := ensureNoRepoNarrowConfig(cwd, repoPath); err != nil {
-			return err
-		}
-	}
-
-	if err := config.WriteDefault(path, force); err != nil {
-		return err
-	}
-
-	fmt.Fprintf(out, "Created %s\n", path)
-	return nil
-}
-
-func ensureNoRepoNarrowConfig(cwd, repoPath string) error {
-	narrowPath, err := config.RepoNarrowPath(cwd)
-	if err != nil {
-		return nil
-	}
-	if _, err := os.Stat(narrowPath); err == nil {
-		return fmt.Errorf("%s already exists and takes precedence over %s; remove it or move it before running init", narrowPath, repoPath)
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("checking %s: %w", narrowPath, err)
-	}
-	return nil
-}
-
-func resolveInitPath(in io.Reader, out io.Writer, repoPath string, repoErr error, globalPath string, globalErr error, target initTarget) (string, error) {
-	switch target {
-	case initTargetRepo:
-		if repoErr != nil {
-			return "", fmt.Errorf("repo config requires a Git repository")
-		}
-		return repoPath, nil
-	case initTargetGlobal:
-		if globalErr != nil || globalPath == "" {
-			return "", fmt.Errorf("user config directory not available")
-		}
-		return globalPath, nil
-	}
-	return chooseInitPath(in, out, repoPath, repoErr, globalPath, globalErr)
-}
-
-func chooseInitPath(in io.Reader, out io.Writer, repoPath string, repoErr error, globalPath string, globalErr error) (string, error) {
-	if shouldUseInteractivePrompt(in, out) {
-		return chooseInitPathInteractive(in, out, repoPath, repoErr, globalPath, globalErr)
-	}
-	return chooseInitPathText(in, out, repoPath, repoErr, globalPath, globalErr)
-}
-
-func chooseInitPathInteractive(in io.Reader, out io.Writer, repoPath string, repoErr error, globalPath string, globalErr error) (string, error) {
-	options := initPathOptions(repoPath, repoErr, globalPath, globalErr)
-	if len(options) == 0 {
-		return "", fmt.Errorf("no config file location available")
-	}
-
-	path := options[0].Value
-	form := huh.NewForm(
-		huh.NewGroup(
-			huh.NewSelect[string]().
-				Title("Choose config file location").
-				Options(options...).
-				Value(&path),
-		),
-	).WithInput(in).WithOutput(out)
-
-	if err := form.Run(); err != nil {
-		if errors.Is(err, huh.ErrUserAborted) {
-			return "", fmt.Errorf("init aborted")
-		}
-		return "", fmt.Errorf("failed to read input: %w", err)
-	}
-	return path, nil
-}
-
-func initPathOptions(repoPath string, repoErr error, globalPath string, globalErr error) []huh.Option[string] {
-	options := make([]huh.Option[string], 0, 2)
-	if repoErr == nil {
-		options = append(options, huh.NewOption(initProjectLabel(), repoPath))
-	}
-	if globalErr == nil && globalPath != "" {
-		options = append(options, huh.NewOption(initGlobalLabel(globalPath), globalPath))
-	}
-	return options
-}
-
-const (
-	initProjectUnavailableLabel = "Project (unavailable: not inside a Git repository)"
-	initGlobalUnavailableLabel  = "Global (unavailable: user config directory not available)"
-)
-
-func initProjectLabel() string {
-	return "Project (.gh-pr-todo.yml)"
-}
-
-func initGlobalLabel(path string) string {
-	return fmt.Sprintf("Global (%s)", path)
-}
-
-func chooseInitPathText(in io.Reader, out io.Writer, repoPath string, repoErr error, globalPath string, globalErr error) (string, error) {
-	if repoErr != nil && (globalErr != nil || globalPath == "") {
-		return "", fmt.Errorf("no config file location available")
-	}
-
-	fmt.Fprintln(out, "Choose config file location:")
-	if repoErr == nil {
-		fmt.Fprintf(out, "  1) %s\n", initProjectLabel())
-	} else {
-		fmt.Fprintf(out, "  1) %s\n", initProjectUnavailableLabel)
-	}
-	if globalErr == nil && globalPath != "" {
-		fmt.Fprintf(out, "  2) %s\n", initGlobalLabel(globalPath))
-	} else {
-		fmt.Fprintf(out, "  2) %s\n", initGlobalUnavailableLabel)
-	}
-	fmt.Fprint(out, "Enter selection: ")
-
-	reader := bufio.NewReader(in)
-	line, err := reader.ReadString('\n')
-	if err != nil && (err != io.EOF || line == "") {
-		return "", fmt.Errorf("failed to read input: %w", err)
-	}
-	line = strings.TrimSpace(line)
-
-	switch line {
-	case "1":
-		if repoErr != nil {
-			return "", fmt.Errorf("repo config requires a Git repository")
-		}
-		return repoPath, nil
-	case "2":
-		if globalErr != nil || globalPath == "" {
-			return "", fmt.Errorf("user config directory not available")
-		}
-		return globalPath, nil
-	case "":
-		return "", fmt.Errorf("no input received")
-	default:
-		return "", fmt.Errorf("invalid selection %q: enter 1 or 2", line)
-	}
-}
-
-func shouldUseInteractivePrompt(in io.Reader, out io.Writer) bool {
-	return isTerminalFile(in) && isTerminalFile(out)
-}
-
-func isTerminalFile(v any) bool {
-	file, ok := v.(*os.File)
-	if !ok {
-		return false
-	}
-	info, err := file.Stat()
-	if err != nil {
-		return false
-	}
-	return info.Mode()&os.ModeCharDevice != 0
-}
-
-func printInitUsage(fs *pflag.FlagSet) {
-	fmt.Fprintf(color.Output, "%s\n\n", "Create a default config file.")
-	fmt.Fprintf(color.Output, "%s\n", output.Bold("USAGE"))
-	fmt.Fprintf(color.Output, "  %s\n\n", "gh pr-todo init [--repo | --global] [--force]")
-	fmt.Fprintf(color.Output, "%s\n", output.Bold("FLAGS"))
-	fs.VisitAll(func(f *pflag.Flag) {
-		if f.Shorthand != "" {
-			fmt.Fprintf(color.Output, "  -%s, --%s  %s\n", f.Shorthand, f.Name, f.Usage)
-		} else {
-			fmt.Fprintf(color.Output, "      --%s  %s\n", f.Name, f.Usage)
-		}
-	})
-	fmt.Fprintln(color.Output)
-	fmt.Fprintf(color.Output, "%s\n", output.Bold("DESCRIPTION"))
-	fmt.Fprintf(color.Output, "  %s\n", "Creates a default configuration file. Without --repo or --global, init prompts for a location.")
-	fmt.Fprintf(color.Output, "  %s\n", "Locations:")
-	fmt.Fprintf(color.Output, "  %s\n", "  - --repo: Project (.gh-pr-todo.yml), available inside a Git repository")
-	fmt.Fprintf(color.Output, "  %s\n", "  - --global: user config dir/gh-pr-todo/config.yml")
-	fmt.Fprintf(color.Output, "  %s\n", "")
-	fmt.Fprintf(color.Output, "  %s\n", "Use --force to overwrite an existing project or global config file.")
-	fmt.Fprintf(color.Output, "  %s\n", "If you choose repo scope and .github/gh-pr-todo.yml exists, move or remove it first because it takes precedence.")
-	fmt.Fprintln(color.Output)
 }

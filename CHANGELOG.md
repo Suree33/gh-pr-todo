@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.2](https://github.com/Suree33/gh-pr-todo/compare/v1.1.1...v1.1.2) (2026-05-26)
+
+
+### Miscellaneous Chores
+
+* **deps:** bump github.com/odvcencio/gotreesitter ([#109](https://github.com/Suree33/gh-pr-todo/issues/109)) ([5b33269](https://github.com/Suree33/gh-pr-todo/commit/5b3326957d13bee3349dc2975533832f8325b6d2))
+* **deps:** bump golangci/golangci-lint-action from 9 to 9.2.0 ([#107](https://github.com/Suree33/gh-pr-todo/issues/107)) ([0a4cfee](https://github.com/Suree33/gh-pr-todo/commit/0a4cfeede5f788ea23abe7733c4fb46ebf4d6ad7))
+
 ## [1.1.1](https://github.com/Suree33/gh-pr-todo/compare/v1.1.0...v1.1.1) (2026-05-15)
 
 

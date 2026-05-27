@@ -7,7 +7,7 @@ require (
 	github.com/briandowns/spinner v1.23.2
 	github.com/cli/go-gh/v2 v2.13.0
 	github.com/fatih/color v1.19.0
-	github.com/odvcencio/gotreesitter v0.17.4
+	github.com/odvcencio/gotreesitter v0.18.0
 	github.com/spf13/pflag v1.0.10
 	gopkg.in/yaml.v3 v3.0.1
 )

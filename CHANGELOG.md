@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.3](https://github.com/Suree33/gh-pr-todo/compare/v1.1.2...v1.1.3) (2026-06-03)
+
+
+### Miscellaneous Chores
+
+* **deps:** bump actions/checkout from 6 to 6.0.2 ([#114](https://github.com/Suree33/gh-pr-todo/issues/114)) ([b4708e7](https://github.com/Suree33/gh-pr-todo/commit/b4708e7dacd56991c7c5b64366afe3ab675c23ce))
+* **deps:** bump github.com/odvcencio/gotreesitter ([#113](https://github.com/Suree33/gh-pr-todo/issues/113)) ([a0392a6](https://github.com/Suree33/gh-pr-todo/commit/a0392a6db0a50ce74b4ae1c5549bc239988766bf))
+* **deps:** bump golangci/golangci-lint-action from 9.2.0 to 9.2.1 ([#111](https://github.com/Suree33/gh-pr-todo/issues/111)) ([425e85b](https://github.com/Suree33/gh-pr-todo/commit/425e85bb51a61dec405fb9d3d48f86111beb2330))
+
 ## [1.1.2](https://github.com/Suree33/gh-pr-todo/compare/v1.1.1...v1.1.2) (2026-05-26)
 
 

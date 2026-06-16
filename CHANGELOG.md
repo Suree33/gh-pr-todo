@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.4](https://github.com/Suree33/gh-pr-todo/compare/v1.1.3...v1.1.4) (2026-06-16)
+
+
+### Miscellaneous Chores
+
+* **deps:** bump actions/checkout from 6.0.2 to 6.0.3 ([#116](https://github.com/Suree33/gh-pr-todo/issues/116)) ([36c9d8c](https://github.com/Suree33/gh-pr-todo/commit/36c9d8cac5851a579bbadd20131a3ebd6811e468))
+* **deps:** bump github.com/odvcencio/gotreesitter ([#119](https://github.com/Suree33/gh-pr-todo/issues/119)) ([8ad0d6b](https://github.com/Suree33/gh-pr-todo/commit/8ad0d6bafb0137d5cd210d72169baec69724b6db))
+
 ## [1.1.3](https://github.com/Suree33/gh-pr-todo/compare/v1.1.2...v1.1.3) (2026-06-03)
 
 

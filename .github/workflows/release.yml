@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.3
 
-      - uses: cli/gh-extension-precompile@v2
+      - uses: cli/gh-extension-precompile@v2.1.0
         with:
           go_version_file: go.mod
           release_tag: ${{ needs.release.outputs.tag_name }}

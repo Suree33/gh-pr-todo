@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.5](https://github.com/Suree33/gh-pr-todo/compare/v1.1.4...v1.1.5) (2026-07-02)
+
+
+### Miscellaneous Chores
+
+* **deps:** bump actions/checkout from 6.0.3 to 7.0.0 ([#122](https://github.com/Suree33/gh-pr-todo/issues/122)) ([8cb067b](https://github.com/Suree33/gh-pr-todo/commit/8cb067b4b8eabea26feb33b71cf1429586721d3e))
+* **deps:** bump actions/setup-go from 6 to 6.4.0 ([#123](https://github.com/Suree33/gh-pr-todo/issues/123)) ([7616fd8](https://github.com/Suree33/gh-pr-todo/commit/7616fd8e4a51a0bff2a44111e68c4d71518b066e))
+* **deps:** bump actions/setup-go from 6.4.0 to 6.5.0 ([#125](https://github.com/Suree33/gh-pr-todo/issues/125)) ([b1dab92](https://github.com/Suree33/gh-pr-todo/commit/b1dab92bcc7425ea605c673b049cf8ac5468d251))
+* **deps:** bump cli/gh-extension-precompile from 2 to 2.1.0 ([#120](https://github.com/Suree33/gh-pr-todo/issues/120)) ([63fc748](https://github.com/Suree33/gh-pr-todo/commit/63fc748e54d0f6306a555e797a729bc4f5b28adb))
+* **deps:** bump cli/gh-extension-precompile from 2.1.0 to 2.2.0 ([#124](https://github.com/Suree33/gh-pr-todo/issues/124)) ([3760741](https://github.com/Suree33/gh-pr-todo/commit/3760741b80109a9b3554308b97cb5c2579ee531c))
+* **deps:** bump github.com/odvcencio/gotreesitter ([#126](https://github.com/Suree33/gh-pr-todo/issues/126)) ([7309b2b](https://github.com/Suree33/gh-pr-todo/commit/7309b2b24a461e69fbaf2360e16f5f209db4dac0))
+
 ## [1.1.4](https://github.com/Suree33/gh-pr-todo/compare/v1.1.3...v1.1.4) (2026-06-16)
 
 

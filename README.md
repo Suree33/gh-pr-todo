@@ -262,6 +262,60 @@ Found 3 TODO-style comment(s)
   <!-- NOTE: Update this section after v2.0 release -->
 ```
 
+## GitHub Actions
+
+Add a job to your workflow that installs the extension and runs it on the pull request:
+
+```yaml
+jobs:
+  pr-todo:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Install gh-pr-todo
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh extension install Suree33/gh-pr-todo
+
+      - name: Run gh-pr-todo
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr-todo -R "${GITHUB_REPOSITORY}" "${{ github.event.pull_request.number }}"
+```
+
+### Annotations
+
+`GITHUB_ACTIONS=true` is set automatically by the runner, so TODO-style comments are emitted as [workflow annotations](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands) and appear inline on the PR. Default severities:
+
+| Severity  | Keywords                      |
+| --------- | ----------------------------- |
+| `notice`  | `TODO`, `NOTE`                |
+| `warning` | `FIXME`, `HACK`, `XXX`, `BUG` |
+
+Override with `--severity` or a [config file](#configuration-file).
+
+### CI Failure
+
+By default, `gh pr-todo` exits with `0` regardless of findings. To fail CI on specific types, promote them to `error`:
+
+```yaml
+run: gh pr-todo -R "${GITHUB_REPOSITORY}" "${{ github.event.pull_request.number }}" --severity error=FIXME
+```
+
+Or persist the policy in `.gh-pr-todo.yml`:
+
+```yaml
+severity:
+  error:
+    - FIXME
+```
+
+Pass `--no-ci-fail` to suppress exit `1` even when error-level TODOs are found.
+
 ## Supported Comment Formats
 
 The tool recognizes TODO-style comments in various formats:

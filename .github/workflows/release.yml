@@ -15,7 +15,7 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      - uses: googleapis/release-please-action@v5.0.0
+      - uses: googleapis/release-please-action@v5
         id: release
 
   publish-assets:
@@ -25,9 +25,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7
 
-      - uses: cli/gh-extension-precompile@v2.2.0
+      - uses: cli/gh-extension-precompile@v2
         with:
           go_version_file: go.mod
           release_tag: ${{ needs.release.outputs.tag_name }}

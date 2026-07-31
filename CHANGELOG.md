@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.7](https://github.com/Suree33/gh-pr-todo/compare/v1.1.6...v1.1.7) (2026-07-31)
+
+
+### Miscellaneous Chores
+
+* **deps:** bump actions/setup-go from 6.5.0 to 7.0.0 ([#139](https://github.com/Suree33/gh-pr-todo/issues/139)) ([a2a2e28](https://github.com/Suree33/gh-pr-todo/commit/a2a2e28994bb7135b930387ddd93dd3adc4a6c5e))
+* **deps:** bump github.com/odvcencio/gotreesitter ([#132](https://github.com/Suree33/gh-pr-todo/issues/132)) ([623fad5](https://github.com/Suree33/gh-pr-todo/commit/623fad5d35d2e119dd1fd40869ecf301e3695c7b))
+* **deps:** bump github.com/odvcencio/gotreesitter ([#145](https://github.com/Suree33/gh-pr-todo/issues/145)) ([a8c4552](https://github.com/Suree33/gh-pr-todo/commit/a8c45520480d20014086b60ab0fccf9c0563f06d))
+
 ## [1.1.6](https://github.com/Suree33/gh-pr-todo/compare/v1.1.5...v1.1.6) (2026-07-07)
 
 

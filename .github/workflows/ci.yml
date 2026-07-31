@@ -25,16 +25,16 @@ jobs:
 
     steps:
       - &checkout
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@v7
 
       - &setup-go
         name: Setup Go
-        uses: actions/setup-go@v7.0.0
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
       - name: Lint
-        uses: golangci/golangci-lint-action@v9.3.0
+        uses: golangci/golangci-lint-action@v9
 
   build:
     name: Build

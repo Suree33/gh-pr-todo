@@ -264,7 +264,7 @@ Found 3 TODO-style comment(s)
 
 ## GitHub Actions
 
-Add a job to your workflow that installs the extension and runs it on the pull request:
+Add the dedicated [gh-pr-todo Action](https://github.com/Suree33/gh-pr-todo-action) to your pull request workflow:
 
 ```yaml
 jobs:
@@ -276,16 +276,11 @@ jobs:
       pull-requests: read
 
     steps:
-      - name: Install gh-pr-todo
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh extension install Suree33/gh-pr-todo
-
-      - name: Run gh-pr-todo
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh pr-todo -R "${GITHUB_REPOSITORY}" "${{ github.event.pull_request.number }}"
+      - name: Check PR TODOs
+        uses: Suree33/gh-pr-todo-action@v1
 ```
+
+The action automatically uses the pull request number, repository, and workflow token. It downloads and verifies the latest `gh-pr-todo` release binary and caches it for subsequent runs. See the [action documentation](https://github.com/Suree33/gh-pr-todo-action#readme) for version pinning, additional inputs, and outputs.
 
 ### Annotations
 
@@ -303,7 +298,9 @@ Override with `--severity` or a [config file](#configuration-file).
 By default, `gh pr-todo` exits with `0` regardless of findings. To fail CI on specific types, promote them to `error`:
 
 ```yaml
-run: gh pr-todo -R "${GITHUB_REPOSITORY}" "${{ github.event.pull_request.number }}" --severity error=FIXME
+- uses: Suree33/gh-pr-todo-action@v1
+  with:
+    severity: error=FIXME
 ```
 
 Or persist the policy in `.gh-pr-todo.yml`:
@@ -314,7 +311,7 @@ severity:
     - FIXME
 ```
 
-Pass `--no-ci-fail` to suppress exit `1` even when error-level TODOs are found.
+Set `no-ci-fail: true` to suppress exit `1` even when error-level TODOs are found.
 
 ## Supported Comment Formats
 

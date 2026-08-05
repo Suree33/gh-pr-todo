@@ -3,6 +3,14 @@
 ## [1.1.8](https://github.com/Suree33/gh-pr-todo/compare/v1.1.7...v1.1.8) (2026-08-05)
 
 
+### GitHub Action
+
+A dedicated GitHub Action is now available at [Suree33/gh-pr-todo-action](https://github.com/Suree33/gh-pr-todo-action). It downloads, verifies, and caches the `gh-pr-todo` release binary and automatically uses the pull request context:
+
+```yaml
+- uses: Suree33/gh-pr-todo-action@v1
+```
+
 ### Miscellaneous Chores
 
 * **deps:** bump github.com/odvcencio/gotreesitter ([#147](https://github.com/Suree33/gh-pr-todo/issues/147)) ([295ab99](https://github.com/Suree33/gh-pr-todo/commit/295ab998cad2a3d53232b1120806bd3567ed3573))

@@ -5,7 +5,7 @@
 
 ### GitHub Action
 
-A dedicated GitHub Action is now available at [Suree33/gh-pr-todo-action](https://github.com/Suree33/gh-pr-todo-action). It downloads, verifies, and caches the `gh-pr-todo` release binary and automatically uses the pull request context:
+A dedicated GitHub Action is now available at [Suree33/gh-pr-todo-action](https://github.com/Suree33/gh-pr-todo-action).
 
 ```yaml
 - uses: Suree33/gh-pr-todo-action@v1

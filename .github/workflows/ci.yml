@@ -91,12 +91,5 @@ jobs:
       pull-requests: read
 
     steps:
-      - name: Install gh-pr-todo extension
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh extension install Suree33/gh-pr-todo
-
-      - name: Run gh-pr-todo
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh pr-todo -R "${GITHUB_REPOSITORY}" "${{ github.event.pull_request.number }}"
+      - name: Check PR TODOs
+        uses: Suree33/gh-pr-todo-action@v1

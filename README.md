@@ -216,7 +216,7 @@ When the `CI` environment variable is truthy (e.g. `1`, `true`, parsed via Go's 
 
 ```yaml
 # GitHub Actions example — CI=true is set automatically
-- run: gh pr-todo ${{ github.event.pull_request.number }}
+- uses: Suree33/gh-pr-todo-action@v1
 ```
 
 Pass `--no-ci-fail` to suppress non-zero exit even when error-level TODOs exist:
@@ -291,7 +291,13 @@ The action automatically uses the pull request number, repository, and workflow 
 | `notice`  | `TODO`, `NOTE`                |
 | `warning` | `FIXME`, `HACK`, `XXX`, `BUG` |
 
-Override with `--severity` or a [config file](#configuration-file).
+Override with the action's `severity` input or a [config file](#configuration-file):
+
+```yaml
+- uses: Suree33/gh-pr-todo-action@v1
+  with:
+    severity: warning=TODO,NOTE
+```
 
 ### CI Failure
 

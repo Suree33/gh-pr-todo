@@ -17,6 +17,8 @@ import (
 
 var ghExec func(args ...string) (bytes.Buffer, bytes.Buffer, error) = gh.Exec
 
+const maxConcurrentFileFetches = 8
+
 type PRFetcher interface {
 	FetchDiff(repo, pr string) (string, error)
 	FetchChangedFileContents(repo, pr, diffOutput string) (map[string][]byte, error)
@@ -202,13 +204,29 @@ func (c *Client) FetchChangedFileContents(repo, pr, diffOutput string) (map[stri
 	paths := internal.ExtractChangedPaths(diffOutput)
 	files := make(map[string][]byte, len(paths))
 	var failedPaths []string
+	type fetchResult struct {
+		path string
+		data []byte
+		err  error
+	}
+	results := make(chan fetchResult, len(paths))
+	semaphore := make(chan struct{}, maxConcurrentFileFetches)
 	for _, p := range paths {
-		data, _, err := c.fetchRawFileContent(withHost(host, nwo), p, sha)
-		if err != nil {
-			failedPaths = append(failedPaths, p)
+		go func(path string) {
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+
+			data, _, err := c.fetchRawFileContent(withHost(host, nwo), path, sha)
+			results <- fetchResult{path: path, data: data, err: err}
+		}(p)
+	}
+	for range paths {
+		result := <-results
+		if result.err != nil {
+			failedPaths = append(failedPaths, result.path)
 			continue
 		}
-		files[p] = data
+		files[result.path] = result.data
 	}
 	if len(failedPaths) > 0 {
 		return files, fmt.Errorf("failed to fetch %d changed file(s)", len(failedPaths))

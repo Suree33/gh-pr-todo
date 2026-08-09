@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Suree33/gh-pr-todo/internal/todotype"
 	"github.com/Suree33/gh-pr-todo/pkg/types"
@@ -407,6 +410,43 @@ func TestFetchChangedFileContents(t *testing.T) {
 		expectedSecond := []string{"api", "repos/o/r/contents/foo.go?ref=abc123", "-H", "Accept: application/vnd.github.raw+json"}
 		if !reflect.DeepEqual(calls[1], expectedSecond) {
 			t.Fatalf("second call args = %v, expected %v", calls[1], expectedSecond)
+		}
+	})
+
+	t.Run("fetches changed files with bounded concurrency", func(t *testing.T) {
+		var diff strings.Builder
+		for i := range 16 {
+			name := fmt.Sprintf("file%d.go", i)
+			fmt.Fprintf(&diff, "diff --git a/%s b/%s\n--- a/%s\n+++ b/%s\n@@ -1 +1 @@\n-old\n+new\n", name, name, name, name)
+		}
+
+		var active, maxActive atomic.Int32
+		withGhExec(t, func(args ...string) (bytes.Buffer, bytes.Buffer, error) {
+			if args[0] == "pr" {
+				return *bytes.NewBufferString(metaJSON), bytes.Buffer{}, nil
+			}
+
+			current := active.Add(1)
+			defer active.Add(-1)
+			for {
+				maximum := maxActive.Load()
+				if current <= maximum || maxActive.CompareAndSwap(maximum, current) {
+					break
+				}
+			}
+			time.Sleep(20 * time.Millisecond)
+			return *bytes.NewBufferString("file contents"), bytes.Buffer{}, nil
+		})
+
+		got, err := NewClient().FetchChangedFileContents("o/r", "1", diff.String())
+		if err != nil {
+			t.Fatalf("FetchChangedFileContents() unexpected error: %v", err)
+		}
+		if len(got) != 16 {
+			t.Fatalf("FetchChangedFileContents() returned %d files, expected 16", len(got))
+		}
+		if maxActive.Load() != maxConcurrentFileFetches {
+			t.Fatalf("maximum concurrent file fetches = %d, expected %d", maxActive.Load(), maxConcurrentFileFetches)
 		}
 	})
 

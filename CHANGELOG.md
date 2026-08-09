@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.9](https://github.com/Suree33/gh-pr-todo/compare/v1.1.8...v1.1.9) (2026-08-09)
+
+
+### Performance Improvements
+
+* **github:** fetch changed files concurrently ([#151](https://github.com/Suree33/gh-pr-todo/issues/151)) ([86a2614](https://github.com/Suree33/gh-pr-todo/commit/86a26147c37939b1747bbebe9c842057e198487c))
+
 ## [1.1.8](https://github.com/Suree33/gh-pr-todo/compare/v1.1.7...v1.1.8) (2026-08-05)
 
 

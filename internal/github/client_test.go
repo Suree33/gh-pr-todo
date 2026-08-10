@@ -352,7 +352,7 @@ func TestFetchChangedFileContents(t *testing.T) {
 			return bytes.Buffer{}, bytes.Buffer{}, errors.New("boom")
 		})
 		c := NewClient()
-		got, err := c.FetchChangedFileContents("", "", sampleDiff)
+		got, err := c.FetchChangedFileContents("", "", sampleDiff, defaultTypes)
 		if err == nil || err.Error() != "boom" {
 			t.Fatalf("expected boom error, got %v", err)
 		}
@@ -366,7 +366,7 @@ func TestFetchChangedFileContents(t *testing.T) {
 			return *bytes.NewBufferString("not-json"), bytes.Buffer{}, nil
 		})
 		c := NewClient()
-		_, err := c.FetchChangedFileContents("", "", sampleDiff)
+		_, err := c.FetchChangedFileContents("", "", sampleDiff, defaultTypes)
 		if err == nil {
 			t.Fatal("expected json error, got nil")
 		}
@@ -377,7 +377,7 @@ func TestFetchChangedFileContents(t *testing.T) {
 			return *bytes.NewBufferString(`{}`), bytes.Buffer{}, nil
 		})
 		c := NewClient()
-		_, err := c.FetchChangedFileContents("", "", sampleDiff)
+		_, err := c.FetchChangedFileContents("", "", sampleDiff, defaultTypes)
 		if err == nil || err.Error() != "could not determine PR head" {
 			t.Fatalf("expected PR head error, got %v", err)
 		}
@@ -393,7 +393,7 @@ func TestFetchChangedFileContents(t *testing.T) {
 			return *bytes.NewBufferString("file contents"), bytes.Buffer{}, nil
 		})
 		c := NewClient()
-		got, err := c.FetchChangedFileContents("o/r", "1", sampleDiff)
+		got, err := c.FetchChangedFileContents("o/r", "1", sampleDiff, defaultTypes)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -417,7 +417,7 @@ func TestFetchChangedFileContents(t *testing.T) {
 		var diff strings.Builder
 		for i := range 16 {
 			name := fmt.Sprintf("file%d.go", i)
-			fmt.Fprintf(&diff, "diff --git a/%s b/%s\n--- a/%s\n+++ b/%s\n@@ -1 +1 @@\n-old\n+new\n", name, name, name, name)
+			fmt.Fprintf(&diff, "diff --git a/%s b/%s\n--- a/%s\n+++ b/%s\n@@ -1 +1 @@\n-old\n+// TODO: new\n", name, name, name, name)
 		}
 
 		var active, maxActive atomic.Int32
@@ -438,7 +438,7 @@ func TestFetchChangedFileContents(t *testing.T) {
 			return *bytes.NewBufferString("file contents"), bytes.Buffer{}, nil
 		})
 
-		got, err := NewClient().FetchChangedFileContents("o/r", "1", diff.String())
+		got, err := NewClient().FetchChangedFileContents("o/r", "1", diff.String(), defaultTypes)
 		if err != nil {
 			t.Fatalf("FetchChangedFileContents() unexpected error: %v", err)
 		}
@@ -468,9 +468,9 @@ index 0000000..1111111 100644
 +++ b/.github/gh pr-todo.yml
 @@ -1,1 +1,2 @@
  severity:
-+  TODO: error
++  # TODO: error
 `
-		got, err := NewClient().FetchChangedFileContents("github.example.com/o/r", "1", diffWithEscapedPath)
+		got, err := NewClient().FetchChangedFileContents("github.example.com/o/r", "1", diffWithEscapedPath, defaultTypes)
 		if err != nil {
 			t.Fatalf("FetchChangedFileContents() unexpected error: %v", err)
 		}
@@ -497,7 +497,7 @@ index 0000000..1111111 100644
 			return bytes.Buffer{}, bytes.Buffer{}, errors.New("404")
 		})
 		c := NewClient()
-		got, err := c.FetchChangedFileContents("", "", twoFileDiff)
+		got, err := c.FetchChangedFileContents("", "", twoFileDiff, defaultTypes)
 		if err == nil || !strings.Contains(err.Error(), "failed to fetch 1") {
 			t.Fatalf("expected failed-to-fetch error, got %v", err)
 		}
@@ -508,6 +508,209 @@ index 0000000..1111111 100644
 			t.Fatalf("expected bar.go to be absent (fetch failed), got map=%v", got)
 		}
 	})
+}
+
+func TestFetchChangedFileContentsFiltersPaths(t *testing.T) {
+	metaJSON := `{"headRefOid":"abc123","headRepository":{"nameWithOwner":"o/r"}}`
+	tests := []struct {
+		name            string
+		diff            string
+		todoTypes       []string
+		wantFile        string
+		wantGHCalls     int
+		wantContentCall int
+	}{
+		{
+			name: "no configured marker skips metadata lookup",
+			diff: `diff --git a/main.go b/main.go
+--- a/main.go
++++ b/main.go
+@@ -1 +1 @@
+-old
++new`,
+			todoTypes: defaultTypes,
+		},
+		{
+			name: "unsupported marker skips content lookup",
+			diff: `diff --git a/config.xyz b/config.xyz
+--- a/config.xyz
++++ b/config.xyz
+@@ -1 +1,2 @@
+ setting: value
++# TODO: update setting`,
+			todoTypes: defaultTypes,
+		},
+		{
+			name: "supported marker fetches content",
+			diff: `diff --git a/main.go b/main.go
+--- a/main.go
++++ b/main.go
+@@ -1 +1,2 @@
+ package main
++// TODO: implement`,
+			todoTypes:       defaultTypes,
+			wantFile:        "main.go",
+			wantGHCalls:     2,
+			wantContentCall: 1,
+		},
+		{
+			name: "custom marker fetches content",
+			diff: `diff --git a/security.go b/security.go
+--- a/security.go
++++ b/security.go
+@@ -1 +1,2 @@
+ package security
++// SECURITY: review`,
+			todoTypes:       []string{"SECURITY"},
+			wantFile:        "security.go",
+			wantGHCalls:     2,
+			wantContentCall: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var (
+				calls        [][]string
+				contentCalls int
+			)
+			withGhExec(t, func(args ...string) (bytes.Buffer, bytes.Buffer, error) {
+				calls = append(calls, append([]string(nil), args...))
+				if args[0] == "pr" {
+					return *bytes.NewBufferString(metaJSON), bytes.Buffer{}, nil
+				}
+				contentCalls++
+				return *bytes.NewBufferString("file contents"), bytes.Buffer{}, nil
+			})
+
+			got, err := NewClient().FetchChangedFileContents("o/r", "1", tt.diff, tt.todoTypes)
+			if err != nil {
+				t.Fatalf("FetchChangedFileContents() unexpected error: %v", err)
+			}
+			if len(calls) != tt.wantGHCalls {
+				t.Fatalf("ghExec call count = %d, expected %d: %v", len(calls), tt.wantGHCalls, calls)
+			}
+			if contentCalls != tt.wantContentCall {
+				t.Fatalf("content call count = %d, expected %d", contentCalls, tt.wantContentCall)
+			}
+			if got == nil {
+				t.Fatal("FetchChangedFileContents() returned nil map")
+			}
+			if tt.wantFile == "" {
+				if len(got) != 0 {
+					t.Fatalf("files = %v, expected empty map", got)
+				}
+				return
+			}
+			if string(got[tt.wantFile]) != "file contents" {
+				t.Fatalf("files[%q] = %q, expected file contents", tt.wantFile, got[tt.wantFile])
+			}
+		})
+	}
+}
+
+func TestCollectTODOsFetchesContentForAddedPlusPlusPlusLine(t *testing.T) {
+	metaJSON := `{"headRefOid":"abc123","headRepository":{"nameWithOwner":"o/r"}}`
+	diff := `diff --git a/main.cpp b/main.cpp
+--- a/main.cpp
++++ b/main.cpp
+@@ -0,0 +1 @@
++++ b/foo; // TODO: candidate`
+	var contentCalls int
+	withGhExec(t, func(args ...string) (bytes.Buffer, bytes.Buffer, error) {
+		if args[0] == "pr" && args[1] == "diff" {
+			return *bytes.NewBufferString(diff), bytes.Buffer{}, nil
+		}
+		if args[0] == "pr" && args[1] == "view" {
+			return *bytes.NewBufferString(metaJSON), bytes.Buffer{}, nil
+		}
+		contentCalls++
+		return *bytes.NewBufferString("++ b/foo; // TODO: candidate\n"), bytes.Buffer{}, nil
+	})
+
+	got, err := CollectTODOs(NewClient(), "o/r", "1", defaultTypes)
+	if err != nil {
+		t.Fatalf("CollectTODOs() unexpected error: %v", err)
+	}
+	want := []types.TODO{{
+		Filename: "main.cpp",
+		Line:     1,
+		Comment:  "// TODO: candidate",
+		Type:     "TODO",
+	}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("CollectTODOs() = %#v, expected %#v", got, want)
+	}
+	if contentCalls != 1 {
+		t.Fatalf("content call count = %d, expected 1", contentCalls)
+	}
+}
+
+func TestCollectTODOsSkipsUnsupportedContentAndUsesDiffFallback(t *testing.T) {
+	diff := `diff --git a/config.xyz b/config.xyz
+--- a/config.xyz
++++ b/config.xyz
+@@ -1 +1,2 @@
+ setting: value
++# TODO: update setting`
+	var calls [][]string
+	withGhExec(t, func(args ...string) (bytes.Buffer, bytes.Buffer, error) {
+		calls = append(calls, append([]string(nil), args...))
+		if len(args) >= 2 && args[0] == "pr" && args[1] == "diff" {
+			return *bytes.NewBufferString(diff), bytes.Buffer{}, nil
+		}
+		t.Fatalf("unexpected ghExec call: %v", args)
+		return bytes.Buffer{}, bytes.Buffer{}, nil
+	})
+
+	got, err := CollectTODOs(NewClient(), "o/r", "1", defaultTypes)
+	if err != nil {
+		t.Fatalf("CollectTODOs() unexpected error: %v", err)
+	}
+	want := []types.TODO{{
+		Filename: "config.xyz",
+		Line:     2,
+		Comment:  "# TODO: update setting",
+		Type:     "TODO",
+	}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("CollectTODOs() = %#v, expected %#v", got, want)
+	}
+	if len(calls) != 1 {
+		t.Fatalf("ghExec call count = %d, expected 1: %v", len(calls), calls)
+	}
+}
+
+func TestCollectTODOsUsesTreeSitterForSupportedContent(t *testing.T) {
+	metaJSON := `{"headRefOid":"abc123","headRepository":{"nameWithOwner":"o/r"}}`
+	var contentCalls int
+	withGhExec(t, func(args ...string) (bytes.Buffer, bytes.Buffer, error) {
+		if args[0] == "pr" && args[1] == "diff" {
+			return *bytes.NewBufferString(sampleDiff), bytes.Buffer{}, nil
+		}
+		if args[0] == "pr" && args[1] == "view" {
+			return *bytes.NewBufferString(metaJSON), bytes.Buffer{}, nil
+		}
+		contentCalls++
+		return *bytes.NewBufferString("package foo\n// TODO: add bar\n"), bytes.Buffer{}, nil
+	})
+
+	got, err := CollectTODOs(NewClient(), "o/r", "1", defaultTypes)
+	if err != nil {
+		t.Fatalf("CollectTODOs() unexpected error: %v", err)
+	}
+	want := []types.TODO{{
+		Filename: "foo.go",
+		Line:     2,
+		Comment:  "// TODO: add bar",
+		Type:     "TODO",
+	}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("CollectTODOs() = %#v, expected %#v", got, want)
+	}
+	if contentCalls != 1 {
+		t.Fatalf("content call count = %d, expected 1", contentCalls)
+	}
 }
 
 type stubFetcher struct {
@@ -528,7 +731,7 @@ func (s *stubFetcher) FetchDiff(repo, pr string) (string, error) {
 	return s.diff, s.diffErr
 }
 
-func (s *stubFetcher) FetchChangedFileContents(repo, pr, diff string) (map[string][]byte, error) {
+func (s *stubFetcher) FetchChangedFileContents(repo, pr, diff string, todoTypes []string) (map[string][]byte, error) {
 	s.fetchFCCalled = true
 	s.gotRepoFC, s.gotPRFC, s.gotDiffFC = repo, pr, diff
 	return s.files, s.filesErr

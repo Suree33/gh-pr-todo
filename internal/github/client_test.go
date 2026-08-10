@@ -6,15 +6,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"reflect"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Suree33/gh-pr-todo/internal/todotype"
 	"github.com/Suree33/gh-pr-todo/pkg/types"
+	"github.com/cli/go-gh/v2/pkg/api"
 )
 
 // defaultTypes is used as the todoTypes argument in CollectTODOs calls.
@@ -99,6 +102,59 @@ func withGhExec(t *testing.T, fn func(args ...string) (bytes.Buffer, bytes.Buffe
 	original := ghExec
 	ghExec = fn
 	t.Cleanup(func() { ghExec = original })
+}
+
+// withRESTClientFactory swaps the package-level REST client factory for the
+// duration of a test. Tests that use this helper MUST NOT call t.Parallel():
+// the swap is a global mutation and would race with concurrent subtests.
+func withRESTClientFactory(t *testing.T, fn func(host string) (restClient, error)) {
+	t.Helper()
+	original := newRESTClient
+	newRESTClient = fn
+	t.Cleanup(func() { newRESTClient = original })
+}
+
+type fakeRESTRequest struct {
+	method string
+	path   string
+}
+
+type fakeRESTClient struct {
+	mu       sync.Mutex
+	requests []fakeRESTRequest
+	handler  func(method, path string) (*http.Response, error)
+}
+
+func (f *fakeRESTClient) Request(method, path string, _ io.Reader) (*http.Response, error) {
+	f.mu.Lock()
+	f.requests = append(f.requests, fakeRESTRequest{method: method, path: path})
+	f.mu.Unlock()
+	return f.handler(method, path)
+}
+
+func (f *fakeRESTClient) requestsSnapshot() []fakeRESTRequest {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]fakeRESTRequest(nil), f.requests...)
+}
+
+type trackingBody struct {
+	*bytes.Reader
+	closed atomic.Bool
+}
+
+func (b *trackingBody) Close() error {
+	b.closed.Store(true)
+	return nil
+}
+
+func newRESTResponse(data []byte) (*http.Response, *trackingBody) {
+	body := &trackingBody{Reader: bytes.NewReader(data)}
+	return &http.Response{StatusCode: http.StatusOK, Body: body}, body
+}
+
+func restHTTPError(status int, message string) error {
+	return &api.HTTPError{StatusCode: status, Message: message}
 }
 
 // captureStderr redirects os.Stderr while fn runs and returns the captured
@@ -259,10 +315,22 @@ func TestFetchRemoteConfigRefs(t *testing.T) {
 
 func TestFetchFileAtRef(t *testing.T) {
 	t.Run("fetches raw content with escaped path and ref", func(t *testing.T) {
-		var gotArgs []string
-		withGhExec(t, func(args ...string) (bytes.Buffer, bytes.Buffer, error) {
-			gotArgs = args
-			return *bytes.NewBufferString("severity:\n  TODO: error\n"), bytes.Buffer{}, nil
+		var gotHost string
+		var gotBody *trackingBody
+		client := &fakeRESTClient{handler: func(method, path string) (*http.Response, error) {
+			if method != http.MethodGet {
+				t.Errorf("REST method = %q, expected %q", method, http.MethodGet)
+			}
+			if path != "repos/owner/repo/contents/.github/gh%20pr-todo.yml?ref=feature%2Fconfig" {
+				t.Errorf("REST path = %q", path)
+			}
+			response, body := newRESTResponse([]byte{0x00, 0xff, 0x01, 0x7f})
+			gotBody = body
+			return response, nil
+		}}
+		withRESTClientFactory(t, func(host string) (restClient, error) {
+			gotHost = host
+			return client, nil
 		})
 
 		got, found, err := NewClient().FetchFileAtRef("owner/repo", ".github/gh pr-todo.yml", "feature/config")
@@ -272,20 +340,29 @@ func TestFetchFileAtRef(t *testing.T) {
 		if !found {
 			t.Fatal("FetchFileAtRef() found = false, expected true")
 		}
-		if string(got) != "severity:\n  TODO: error\n" {
-			t.Fatalf("FetchFileAtRef() data = %q", got)
+		if !bytes.Equal(got, []byte{0x00, 0xff, 0x01, 0x7f}) {
+			t.Fatalf("FetchFileAtRef() data = %v", got)
 		}
-		wantArgs := []string{"api", "repos/owner/repo/contents/.github/gh%20pr-todo.yml?ref=feature%2Fconfig", "-H", "Accept: application/vnd.github.raw+json"}
-		if !reflect.DeepEqual(gotArgs, wantArgs) {
-			t.Fatalf("ghExec args = %v, expected %v", gotArgs, wantArgs)
+		if gotHost != "" {
+			t.Fatalf("REST host = %q, expected default host", gotHost)
+		}
+		if gotBody == nil || !gotBody.closed.Load() {
+			t.Fatal("REST response body was not closed")
 		}
 	})
 
-	t.Run("host-qualified repo passes hostname to gh api", func(t *testing.T) {
-		var gotArgs []string
-		withGhExec(t, func(args ...string) (bytes.Buffer, bytes.Buffer, error) {
-			gotArgs = args
-			return *bytes.NewBufferString("severity: {}\n"), bytes.Buffer{}, nil
+	t.Run("host-qualified repo uses the configured REST host", func(t *testing.T) {
+		var gotHost string
+		client := &fakeRESTClient{handler: func(method, path string) (*http.Response, error) {
+			if path != "repos/owner/repo/contents/.gh-pr-todo.yml?ref=main" {
+				t.Errorf("REST path = %q", path)
+			}
+			response, _ := newRESTResponse([]byte("severity: {}\n"))
+			return response, nil
+		}}
+		withRESTClientFactory(t, func(host string) (restClient, error) {
+			gotHost = host
+			return client, nil
 		})
 
 		_, found, err := NewClient().FetchFileAtRef("github.example.com/owner/repo", ".gh-pr-todo.yml", "main")
@@ -295,15 +372,17 @@ func TestFetchFileAtRef(t *testing.T) {
 		if !found {
 			t.Fatal("FetchFileAtRef() found = false, expected true")
 		}
-		wantArgs := []string{"api", "repos/owner/repo/contents/.gh-pr-todo.yml?ref=main", "-H", "Accept: application/vnd.github.raw+json", "--hostname", "github.example.com"}
-		if !reflect.DeepEqual(gotArgs, wantArgs) {
-			t.Fatalf("ghExec args = %v, expected %v", gotArgs, wantArgs)
+		if gotHost != "github.example.com" {
+			t.Fatalf("REST host = %q, expected github.example.com", gotHost)
 		}
 	})
 
 	t.Run("not found returns found false without error", func(t *testing.T) {
-		withGhExec(t, func(args ...string) (bytes.Buffer, bytes.Buffer, error) {
-			return bytes.Buffer{}, *bytes.NewBufferString("HTTP 404: Not Found"), errors.New("exit 1")
+		client := &fakeRESTClient{handler: func(string, string) (*http.Response, error) {
+			return nil, restHTTPError(http.StatusNotFound, "Not Found")
+		}}
+		withRESTClientFactory(t, func(string) (restClient, error) {
+			return client, nil
 		})
 
 		got, found, err := NewClient().FetchFileAtRef("owner/repo", ".gh-pr-todo.yml", "main")
@@ -315,6 +394,28 @@ func TestFetchFileAtRef(t *testing.T) {
 		}
 		if got != nil {
 			t.Fatalf("FetchFileAtRef() data = %q, expected nil", got)
+		}
+	})
+
+	t.Run("non-404 error includes file context", func(t *testing.T) {
+		client := &fakeRESTClient{handler: func(string, string) (*http.Response, error) {
+			return nil, restHTTPError(http.StatusInternalServerError, "server error")
+		}}
+		withRESTClientFactory(t, func(string) (restClient, error) {
+			return client, nil
+		})
+
+		_, found, err := NewClient().FetchFileAtRef("owner/repo", ".gh-pr-todo.yml", "feature/config")
+		if found {
+			t.Fatal("FetchFileAtRef() found = true, expected false")
+		}
+		if err == nil {
+			t.Fatal("FetchFileAtRef() error = nil, expected error")
+		}
+		for _, want := range []string{"fetching .gh-pr-todo.yml from owner/repo at feature/config", "HTTP 500"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Fatalf("FetchFileAtRef() error = %q, expected to contain %q", err, want)
+			}
 		}
 	})
 }
@@ -387,10 +488,22 @@ func TestFetchChangedFileContents(t *testing.T) {
 		var calls [][]string
 		withGhExec(t, func(args ...string) (bytes.Buffer, bytes.Buffer, error) {
 			calls = append(calls, args)
-			if args[0] == "pr" {
-				return *bytes.NewBufferString(metaJSON), bytes.Buffer{}, nil
+			return *bytes.NewBufferString(metaJSON), bytes.Buffer{}, nil
+		})
+		var gotHost string
+		client := &fakeRESTClient{handler: func(method, path string) (*http.Response, error) {
+			if method != http.MethodGet {
+				t.Errorf("REST method = %q, expected %q", method, http.MethodGet)
 			}
-			return *bytes.NewBufferString("file contents"), bytes.Buffer{}, nil
+			if path != "repos/o/r/contents/foo.go?ref=abc123" {
+				t.Errorf("REST path = %q", path)
+			}
+			response, _ := newRESTResponse([]byte("file contents"))
+			return response, nil
+		}}
+		withRESTClientFactory(t, func(host string) (restClient, error) {
+			gotHost = host
+			return client, nil
 		})
 		c := NewClient()
 		got, err := c.FetchChangedFileContents("o/r", "1", sampleDiff)
@@ -400,16 +513,20 @@ func TestFetchChangedFileContents(t *testing.T) {
 		if string(got["foo.go"]) != "file contents" {
 			t.Fatalf("got %v", got)
 		}
-		if len(calls) != 2 {
-			t.Fatalf("expected 2 ghExec calls, got %d: %v", len(calls), calls)
+		if len(calls) != 1 {
+			t.Fatalf("expected 1 ghExec call, got %d: %v", len(calls), calls)
 		}
 		expectedFirst := []string{"pr", "view", "--json", "headRefOid,headRepository", "-R", "o/r", "1"}
 		if !reflect.DeepEqual(calls[0], expectedFirst) {
 			t.Fatalf("first call args = %v, expected %v", calls[0], expectedFirst)
 		}
-		expectedSecond := []string{"api", "repos/o/r/contents/foo.go?ref=abc123", "-H", "Accept: application/vnd.github.raw+json"}
-		if !reflect.DeepEqual(calls[1], expectedSecond) {
-			t.Fatalf("second call args = %v, expected %v", calls[1], expectedSecond)
+		requests := client.requestsSnapshot()
+		wantRequests := []fakeRESTRequest{{method: http.MethodGet, path: "repos/o/r/contents/foo.go?ref=abc123"}}
+		if !reflect.DeepEqual(requests, wantRequests) {
+			t.Fatalf("REST requests = %v, expected %v", requests, wantRequests)
+		}
+		if gotHost != "" {
+			t.Fatalf("REST host = %q, expected default host", gotHost)
 		}
 	})
 
@@ -422,10 +539,12 @@ func TestFetchChangedFileContents(t *testing.T) {
 
 		var active, maxActive atomic.Int32
 		withGhExec(t, func(args ...string) (bytes.Buffer, bytes.Buffer, error) {
-			if args[0] == "pr" {
-				return *bytes.NewBufferString(metaJSON), bytes.Buffer{}, nil
+			return *bytes.NewBufferString(metaJSON), bytes.Buffer{}, nil
+		})
+		client := &fakeRESTClient{handler: func(method, path string) (*http.Response, error) {
+			if method != http.MethodGet {
+				t.Errorf("REST method = %q, expected %q", method, http.MethodGet)
 			}
-
 			current := active.Add(1)
 			defer active.Add(-1)
 			for {
@@ -435,7 +554,14 @@ func TestFetchChangedFileContents(t *testing.T) {
 				}
 			}
 			time.Sleep(20 * time.Millisecond)
-			return *bytes.NewBufferString("file contents"), bytes.Buffer{}, nil
+			response, _ := newRESTResponse([]byte("file contents"))
+			return response, nil
+		}}
+		withRESTClientFactory(t, func(host string) (restClient, error) {
+			if host != "" {
+				t.Errorf("REST host = %q, expected default host", host)
+			}
+			return client, nil
 		})
 
 		got, err := NewClient().FetchChangedFileContents("o/r", "1", diff.String())
@@ -452,14 +578,21 @@ func TestFetchChangedFileContents(t *testing.T) {
 
 	t.Run("escapes changed file path and ref when fetching raw contents", func(t *testing.T) {
 		metaJSON := `{"headRefOid":"feature/sha","headRepository":{"nameWithOwner":"o/r"}}`
-		var calls [][]string
 		withGhExec(t, func(args ...string) (bytes.Buffer, bytes.Buffer, error) {
-			copied := append([]string(nil), args...)
-			calls = append(calls, copied)
-			if args[0] == "pr" {
-				return *bytes.NewBufferString(metaJSON), bytes.Buffer{}, nil
+			return *bytes.NewBufferString(metaJSON), bytes.Buffer{}, nil
+		})
+		client := &fakeRESTClient{handler: func(method, path string) (*http.Response, error) {
+			want := "repos/o/r/contents/.github/gh%20pr-todo.yml?ref=feature%2Fsha"
+			if path != want {
+				t.Errorf("REST path = %q, expected %q", path, want)
 			}
-			return *bytes.NewBufferString("file contents"), bytes.Buffer{}, nil
+			response, _ := newRESTResponse([]byte("file contents"))
+			return response, nil
+		}}
+		var gotHost string
+		withRESTClientFactory(t, func(host string) (restClient, error) {
+			gotHost = host
+			return client, nil
 		})
 
 		diffWithEscapedPath := `diff --git a/.github/gh pr-todo.yml b/.github/gh pr-todo.yml
@@ -477,24 +610,32 @@ index 0000000..1111111 100644
 		if string(got[".github/gh pr-todo.yml"]) != "file contents" {
 			t.Fatalf("got %v", got)
 		}
-		if len(calls) != 2 {
-			t.Fatalf("expected 2 calls, got %d: %v", len(calls), calls)
+		if gotHost != "github.example.com" {
+			t.Fatalf("REST host = %q, expected github.example.com", gotHost)
 		}
-		want := []string{"api", "repos/o/r/contents/.github/gh%20pr-todo.yml?ref=feature%2Fsha", "-H", "Accept: application/vnd.github.raw+json", "--hostname", "github.example.com"}
-		if !reflect.DeepEqual(calls[1], want) {
-			t.Fatalf("second call args = %v, expected %v", calls[1], want)
+		requests := client.requestsSnapshot()
+		want := []fakeRESTRequest{{method: http.MethodGet, path: "repos/o/r/contents/.github/gh%20pr-todo.yml?ref=feature%2Fsha"}}
+		if !reflect.DeepEqual(requests, want) {
+			t.Fatalf("REST requests = %v, expected %v", requests, want)
 		}
 	})
 
 	t.Run("partial failure returns error and partial files", func(t *testing.T) {
 		withGhExec(t, func(args ...string) (bytes.Buffer, bytes.Buffer, error) {
-			if args[0] == "pr" {
-				return *bytes.NewBufferString(metaJSON), bytes.Buffer{}, nil
+			return *bytes.NewBufferString(metaJSON), bytes.Buffer{}, nil
+		})
+		client := &fakeRESTClient{handler: func(method, path string) (*http.Response, error) {
+			if strings.Contains(path, "/foo.go?") {
+				response, _ := newRESTResponse([]byte("foo contents"))
+				return response, nil
 			}
-			if strings.Contains(args[1], "/foo.go") {
-				return *bytes.NewBufferString("foo contents"), bytes.Buffer{}, nil
+			return nil, restHTTPError(http.StatusNotFound, "Not Found")
+		}}
+		withRESTClientFactory(t, func(host string) (restClient, error) {
+			if host != "" {
+				t.Errorf("REST host = %q, expected default host", host)
 			}
-			return bytes.Buffer{}, bytes.Buffer{}, errors.New("404")
+			return client, nil
 		})
 		c := NewClient()
 		got, err := c.FetchChangedFileContents("", "", twoFileDiff)

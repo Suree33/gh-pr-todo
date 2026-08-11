@@ -275,7 +275,8 @@ func parseTODOsWithTreeSitter(fc fileChange, content []byte, re *regexp.Regexp) 
 		return nil
 	}
 
-	bt, err := grammars.ParseFile(fc.path, content)
+	// Reuse a per-language parser while retaining ParseFile's error and tree ownership semantics.
+	bt, err := grammars.ParseFilePooled(fc.path, content)
 	if err != nil {
 		return nil
 	}

@@ -1,10 +1,13 @@
-// Package github wraps the `gh` CLI to fetch pull request diffs and file contents.
+// Package github wraps the `gh` CLI and GitHub REST API to fetch pull request diffs and file contents.
 package github
 
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
@@ -13,11 +16,29 @@ import (
 	"github.com/Suree33/gh-pr-todo/internal/config"
 	"github.com/Suree33/gh-pr-todo/pkg/types"
 	"github.com/cli/go-gh/v2"
+	"github.com/cli/go-gh/v2/pkg/api"
 )
 
 var ghExec func(args ...string) (bytes.Buffer, bytes.Buffer, error) = gh.Exec
 
 const maxConcurrentFileFetches = 8
+
+const rawContentsAccept = "application/vnd.github.raw+json"
+
+type restClient interface {
+	Request(method, path string, body io.Reader) (*http.Response, error)
+}
+
+var newRESTClient = func(host string) (restClient, error) {
+	options := api.ClientOptions{
+		Headers:      map[string]string{"Accept": rawContentsAccept},
+		LogIgnoreEnv: true,
+	}
+	if host != "" {
+		options.Host = host
+	}
+	return api.NewRESTClient(options)
+}
 
 type PRFetcher interface {
 	FetchDiff(repo, pr string) (string, error)
@@ -102,27 +123,45 @@ func (c *Client) FetchRemoteConfigRefs(repo, pr string) (config.RemoteConfigRefs
 	return refs, nil
 }
 
-func (c *Client) fetchRawFileContent(repo, path, ref string) ([]byte, string, error) {
-	host, repoPath := splitHostRepo(repo)
+func (c *Client) fetchRawFileContent(client restClient, repo, path, ref string) (data []byte, err error) {
+	_, repoPath := splitHostRepo(repo)
 	segments := strings.Split(path, "/")
 	for i, s := range segments {
 		segments[i] = url.PathEscape(s)
 	}
 	apiPath := fmt.Sprintf("repos/%s/contents/%s?ref=%s", repoPath, strings.Join(segments, "/"), url.QueryEscape(ref))
-	args := []string{"api", apiPath, "-H", "Accept: application/vnd.github.raw+json"}
-	if host != "" {
-		args = append(args, "--hostname", host)
+	response, err := client.Request(http.MethodGet, apiPath, nil)
+	if err != nil {
+		return nil, err
 	}
-	out, stdErr, err := ghExec(args...)
-	return out.Bytes(), stdErr.String(), err
+	if response == nil || response.Body == nil {
+		return nil, fmt.Errorf("REST client returned an empty response")
+	}
+	defer func() {
+		if closeErr := response.Body.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("closing REST response body: %w", closeErr))
+		}
+	}()
+	return io.ReadAll(response.Body)
+}
+
+func isRESTNotFound(err error) bool {
+	var httpErr *api.HTTPError
+	return errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusNotFound
 }
 
 // FetchFileAtRef fetches a file from the repository at a specific ref.
 // Returns (nil, false, nil) when the file is not found (404).
 func (c *Client) FetchFileAtRef(repo, path, ref string) ([]byte, bool, error) {
-	data, stderr, err := c.fetchRawFileContent(repo, path, ref)
+	host, _ := splitHostRepo(repo)
+	client, err := newRESTClient(host)
 	if err != nil {
-		if strings.Contains(stderr, "Not Found") || strings.Contains(stderr, "404") {
+		return nil, false, fmt.Errorf("fetching %s from %s at %s: %w", path, repo, ref, err)
+	}
+
+	data, err := c.fetchRawFileContent(client, repo, path, ref)
+	if err != nil {
+		if isRESTNotFound(err) {
 			return nil, false, nil
 		}
 		return nil, false, fmt.Errorf("fetching %s from %s at %s: %w", path, repo, ref, err)
@@ -207,6 +246,15 @@ func (c *Client) FetchChangedFileContents(repo, pr, diffOutput string, todoTypes
 	}
 
 	files := make(map[string][]byte, len(paths))
+	if len(paths) == 0 {
+		return files, nil
+	}
+
+	client, err := newRESTClient(host)
+	if err != nil {
+		return files, fmt.Errorf("creating GitHub REST client: %w", err)
+	}
+
 	var failedPaths []string
 	type fetchResult struct {
 		path string
@@ -220,7 +268,7 @@ func (c *Client) FetchChangedFileContents(repo, pr, diffOutput string, todoTypes
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 
-			data, _, err := c.fetchRawFileContent(withHost(host, nwo), path, sha)
+			data, err := c.fetchRawFileContent(client, withHost(host, nwo), path, sha)
 			results <- fetchResult{path: path, data: data, err: err}
 		}(p)
 	}

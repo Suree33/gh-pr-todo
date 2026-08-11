@@ -654,12 +654,12 @@ index 0000000..1111111 100644
 func TestFetchChangedFileContentsFiltersPaths(t *testing.T) {
 	metaJSON := `{"headRefOid":"abc123","headRepository":{"nameWithOwner":"o/r"}}`
 	tests := []struct {
-		name            string
-		diff            string
-		todoTypes       []string
-		wantFile        string
-		wantGHCalls     int
-		wantContentCall int
+		name          string
+		diff          string
+		todoTypes     []string
+		wantFile      string
+		wantGHCalls   int
+		wantRESTCalls int
 	}{
 		{
 			name: "no configured marker skips metadata lookup",
@@ -689,10 +689,10 @@ func TestFetchChangedFileContentsFiltersPaths(t *testing.T) {
 @@ -1 +1,2 @@
  package main
 +// TODO: implement`,
-			todoTypes:       defaultTypes,
-			wantFile:        "main.go",
-			wantGHCalls:     2,
-			wantContentCall: 1,
+			todoTypes:     defaultTypes,
+			wantFile:      "main.go",
+			wantGHCalls:   1,
+			wantRESTCalls: 1,
 		},
 		{
 			name: "custom marker fetches content",
@@ -702,26 +702,30 @@ func TestFetchChangedFileContentsFiltersPaths(t *testing.T) {
 @@ -1 +1,2 @@
  package security
 +// SECURITY: review`,
-			todoTypes:       []string{"SECURITY"},
-			wantFile:        "security.go",
-			wantGHCalls:     2,
-			wantContentCall: 1,
+			todoTypes:     []string{"SECURITY"},
+			wantFile:      "security.go",
+			wantGHCalls:   1,
+			wantRESTCalls: 1,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var (
-				calls        [][]string
-				contentCalls int
-			)
+			var calls [][]string
 			withGhExec(t, func(args ...string) (bytes.Buffer, bytes.Buffer, error) {
 				calls = append(calls, append([]string(nil), args...))
 				if args[0] == "pr" {
 					return *bytes.NewBufferString(metaJSON), bytes.Buffer{}, nil
 				}
-				contentCalls++
-				return *bytes.NewBufferString("file contents"), bytes.Buffer{}, nil
+				t.Fatalf("unexpected ghExec call: %v", args)
+				return bytes.Buffer{}, bytes.Buffer{}, nil
+			})
+			client := &fakeRESTClient{handler: func(_, _ string) (*http.Response, error) {
+				response, _ := newRESTResponse([]byte("file contents"))
+				return response, nil
+			}}
+			withRESTClientFactory(t, func(string) (restClient, error) {
+				return client, nil
 			})
 
 			got, err := NewClient().FetchChangedFileContents("o/r", "1", tt.diff, tt.todoTypes)
@@ -731,8 +735,8 @@ func TestFetchChangedFileContentsFiltersPaths(t *testing.T) {
 			if len(calls) != tt.wantGHCalls {
 				t.Fatalf("ghExec call count = %d, expected %d: %v", len(calls), tt.wantGHCalls, calls)
 			}
-			if contentCalls != tt.wantContentCall {
-				t.Fatalf("content call count = %d, expected %d", contentCalls, tt.wantContentCall)
+			if got := len(client.requestsSnapshot()); got != tt.wantRESTCalls {
+				t.Fatalf("REST call count = %d, expected %d", got, tt.wantRESTCalls)
 			}
 			if got == nil {
 				t.Fatal("FetchChangedFileContents() returned nil map")
@@ -757,7 +761,6 @@ func TestCollectTODOsFetchesContentForAddedPlusPlusPlusLine(t *testing.T) {
 +++ b/main.cpp
 @@ -0,0 +1 @@
 +++ b/foo; // TODO: candidate`
-	var contentCalls int
 	withGhExec(t, func(args ...string) (bytes.Buffer, bytes.Buffer, error) {
 		if args[0] == "pr" && args[1] == "diff" {
 			return *bytes.NewBufferString(diff), bytes.Buffer{}, nil
@@ -765,8 +768,15 @@ func TestCollectTODOsFetchesContentForAddedPlusPlusPlusLine(t *testing.T) {
 		if args[0] == "pr" && args[1] == "view" {
 			return *bytes.NewBufferString(metaJSON), bytes.Buffer{}, nil
 		}
-		contentCalls++
-		return *bytes.NewBufferString("++ b/foo; // TODO: candidate\n"), bytes.Buffer{}, nil
+		t.Fatalf("unexpected ghExec call: %v", args)
+		return bytes.Buffer{}, bytes.Buffer{}, nil
+	})
+	client := &fakeRESTClient{handler: func(_, _ string) (*http.Response, error) {
+		response, _ := newRESTResponse([]byte("++ b/foo; // TODO: candidate\n"))
+		return response, nil
+	}}
+	withRESTClientFactory(t, func(string) (restClient, error) {
+		return client, nil
 	})
 
 	got, err := CollectTODOs(NewClient(), "o/r", "1", defaultTypes)
@@ -782,8 +792,8 @@ func TestCollectTODOsFetchesContentForAddedPlusPlusPlusLine(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("CollectTODOs() = %#v, expected %#v", got, want)
 	}
-	if contentCalls != 1 {
-		t.Fatalf("content call count = %d, expected 1", contentCalls)
+	if got := len(client.requestsSnapshot()); got != 1 {
+		t.Fatalf("REST call count = %d, expected 1", got)
 	}
 }
 
@@ -824,7 +834,6 @@ func TestCollectTODOsSkipsUnsupportedContentAndUsesDiffFallback(t *testing.T) {
 
 func TestCollectTODOsUsesTreeSitterForSupportedContent(t *testing.T) {
 	metaJSON := `{"headRefOid":"abc123","headRepository":{"nameWithOwner":"o/r"}}`
-	var contentCalls int
 	withGhExec(t, func(args ...string) (bytes.Buffer, bytes.Buffer, error) {
 		if args[0] == "pr" && args[1] == "diff" {
 			return *bytes.NewBufferString(sampleDiff), bytes.Buffer{}, nil
@@ -832,8 +841,15 @@ func TestCollectTODOsUsesTreeSitterForSupportedContent(t *testing.T) {
 		if args[0] == "pr" && args[1] == "view" {
 			return *bytes.NewBufferString(metaJSON), bytes.Buffer{}, nil
 		}
-		contentCalls++
-		return *bytes.NewBufferString("package foo\n// TODO: add bar\n"), bytes.Buffer{}, nil
+		t.Fatalf("unexpected ghExec call: %v", args)
+		return bytes.Buffer{}, bytes.Buffer{}, nil
+	})
+	client := &fakeRESTClient{handler: func(_, _ string) (*http.Response, error) {
+		response, _ := newRESTResponse([]byte("package foo\n// TODO: add bar\n"))
+		return response, nil
+	}}
+	withRESTClientFactory(t, func(string) (restClient, error) {
+		return client, nil
 	})
 
 	got, err := CollectTODOs(NewClient(), "o/r", "1", defaultTypes)
@@ -849,8 +865,8 @@ func TestCollectTODOsUsesTreeSitterForSupportedContent(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("CollectTODOs() = %#v, expected %#v", got, want)
 	}
-	if contentCalls != 1 {
-		t.Fatalf("content call count = %d, expected 1", contentCalls)
+	if got := len(client.requestsSnapshot()); got != 1 {
+		t.Fatalf("REST call count = %d, expected 1", got)
 	}
 }
 

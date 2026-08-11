@@ -749,3 +749,117 @@ func TestParseDiffWithTypesDetectsCustomType(t *testing.T) {
 		t.Fatalf("ParseDiffWithTypes() = %+v, expected %+v", result, expected)
 	}
 }
+
+func TestParseDiffWithTypesHandlesAddedHeaderPrefix(t *testing.T) {
+	diff := `diff --git a/config.xyz b/config.xyz
+--- a/config.xyz
++++ b/config.xyz
+@@ -0,0 +1 @@
++++ b/foo; // TODO: candidate`
+	want := []types.TODO{{
+		Filename: "config.xyz",
+		Line:     1,
+		Comment:  "// TODO: candidate",
+		Type:     "TODO",
+	}}
+
+	got := ParseDiffWithTypes(diff, []string{"TODO"})
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ParseDiffWithTypes() = %+v, expected %+v", got, want)
+	}
+
+	got = ParseDiffWithContentsAndTypes(diff, map[string][]byte{}, []string{"TODO"})
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ParseDiffWithContentsAndTypes() = %+v, expected %+v", got, want)
+	}
+}
+
+func TestExtractPathsRequiringContents(t *testing.T) {
+	tests := []struct {
+		name      string
+		diff      string
+		todoTypes []string
+		expected  []string
+	}{
+		{
+			name: "no configured marker on added lines and ignores diff header",
+			diff: `diff --git a/main# TODO.go b/main# TODO.go
+--- a/main# TODO.go
++++ b/main# TODO.go
+@@ -1,1 +1,2 @@
+ package main
++var value = 1`,
+			todoTypes: defaultTypesForPathTest,
+		},
+		{
+			name: "unsupported file with configured marker",
+			diff: `diff --git a/config.xyz b/config.xyz
+--- a/config.xyz
++++ b/config.xyz
+@@ -1,1 +1,2 @@
+ setting: value
++# TODO: update setting`,
+			todoTypes: defaultTypesForPathTest,
+		},
+		{
+			name: "supported file with configured marker",
+			diff: `diff --git a/main.go b/main.go
+--- a/main.go
++++ b/main.go
+@@ -1,1 +1,2 @@
+ package main
++// TODO: implement`,
+			todoTypes: defaultTypesForPathTest,
+			expected:  []string{"main.go"},
+		},
+		{
+			name: "added source line beginning with diff header prefix",
+			diff: `diff --git a/main.cpp b/main.cpp
+--- a/main.cpp
++++ b/main.cpp
+@@ -0,0 +1 @@
++++ b/foo; // TODO: candidate`,
+			todoTypes: defaultTypesForPathTest,
+			expected:  []string{"main.cpp"},
+		},
+		{
+			name: "custom marker",
+			diff: `diff --git a/security.go b/security.go
+--- a/security.go
++++ b/security.go
+@@ -1,1 +1,2 @@
+ package security
++// SECURITY: review`,
+			todoTypes: []string{"TODO", "SECURITY"},
+			expected:  []string{"security.go"},
+		},
+		{
+			name: "duplicate path is returned once",
+			diff: `diff --git a/main.go b/main.go
+--- a/main.go
++++ b/main.go
+@@ -1,1 +1,2 @@
+ package main
++// TODO: first
+diff --git a/main.go b/main.go
+--- a/main.go
++++ b/main.go
+@@ -3,1 +4,2 @@
+ func main() {}
++// TODO: second`,
+			todoTypes: defaultTypesForPathTest,
+			expected:  []string{"main.go"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ExtractPathsRequiringContents(tt.diff, tt.todoTypes)
+			if !reflect.DeepEqual(got, tt.expected) {
+				t.Fatalf("ExtractPathsRequiringContents() = %v, expected %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+var defaultTypesForPathTest = []string{"TODO", "FIXME", "HACK", "NOTE", "XXX", "BUG"}

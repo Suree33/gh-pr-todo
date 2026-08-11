@@ -82,9 +82,13 @@ func ParseDiffWithTypes(diffOutput string, todoTypes []string) []types.TODO {
 
 	var currentFile string
 	var lineNumber int
+	var inHunk bool
 
 	for _, line := range lines {
-		if after, ok := strings.CutPrefix(line, "+++ b/"); ok {
+		if strings.HasPrefix(line, "diff --git ") {
+			currentFile = ""
+			inHunk = false
+		} else if after, ok := strings.CutPrefix(line, "+++ b/"); ok && !inHunk {
 			currentFile = path.Clean(after)
 		} else if strings.HasPrefix(line, "@@") {
 			if matches := hunkRegex.FindStringSubmatch(line); len(matches) > 1 {
@@ -92,6 +96,7 @@ func ParseDiffWithTypes(diffOutput string, todoTypes []string) []types.TODO {
 					lineNumber = startLine - 1
 				}
 			}
+			inHunk = true
 		} else if after, ok := strings.CutPrefix(line, "+"); ok {
 			lineNumber++
 			if matches := re.FindStringSubmatch(after); len(matches) > 2 {
@@ -126,6 +131,43 @@ func ExtractChangedPaths(diffOutput string) []string {
 				seen[p] = struct{}{}
 				paths = append(paths, p)
 			}
+		}
+	}
+	return paths
+}
+
+// ExtractPathsRequiringContents returns supported changed files whose added
+// lines contain one of the configured TODO markers.
+func ExtractPathsRequiringContents(diffOutput string, todoTypes []string) []string {
+	re := compileTODORegex(todoTypes)
+	var paths []string
+	seen := make(map[string]struct{})
+	var currentFile string
+	var inHunk bool
+
+	// Scan the diff directly instead of reusing ParseDiffWithTypes: an added
+	// source line can itself begin with "+++ b/" and must not become a header.
+	for _, line := range strings.Split(diffOutput, "\n") {
+		switch {
+		case strings.HasPrefix(line, "diff --git "):
+			currentFile = ""
+			inHunk = false
+		case strings.HasPrefix(line, "@@"):
+			inHunk = true
+		case !inHunk:
+			if after, ok := strings.CutPrefix(line, "+++ b/"); ok {
+				currentFile = path.Clean(after)
+			}
+		case strings.HasPrefix(line, "+"):
+			after := strings.TrimPrefix(line, "+")
+			if currentFile == "" || len(re.FindStringSubmatch(after)) <= 2 || grammars.DetectLanguage(currentFile) == nil {
+				continue
+			}
+			if _, exists := seen[currentFile]; exists {
+				continue
+			}
+			seen[currentFile] = struct{}{}
+			paths = append(paths, currentFile)
 		}
 	}
 	return paths

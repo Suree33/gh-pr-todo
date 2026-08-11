@@ -42,7 +42,7 @@ var newRESTClient = func(host string) (restClient, error) {
 
 type PRFetcher interface {
 	FetchDiff(repo, pr string) (string, error)
-	FetchChangedFileContents(repo, pr, diffOutput string) (map[string][]byte, error)
+	FetchChangedFileContents(repo, pr, diffOutput string, todoTypes []string) (map[string][]byte, error)
 }
 
 type Client struct{}
@@ -215,7 +215,12 @@ func (c *Client) FetchDiff(repo, pr string) (string, error) {
 	return stdOut.String(), nil
 }
 
-func (c *Client) FetchChangedFileContents(repo, pr, diffOutput string) (map[string][]byte, error) {
+func (c *Client) FetchChangedFileContents(repo, pr, diffOutput string, todoTypes []string) (map[string][]byte, error) {
+	paths := internal.ExtractPathsRequiringContents(diffOutput, todoTypes)
+	if len(paths) == 0 {
+		return make(map[string][]byte), nil
+	}
+
 	host, _ := splitHostRepo(repo)
 	args := []string{"pr", "view", "--json", "headRefOid,headRepository"}
 	if repo != "" {
@@ -240,7 +245,6 @@ func (c *Client) FetchChangedFileContents(repo, pr, diffOutput string) (map[stri
 		return nil, fmt.Errorf("could not determine PR head")
 	}
 
-	paths := internal.ExtractChangedPaths(diffOutput)
 	files := make(map[string][]byte, len(paths))
 	if len(paths) == 0 {
 		return files, nil
@@ -291,7 +295,7 @@ func CollectTODOs(fetcher PRFetcher, repo, pr string, todoTypes []string) ([]typ
 		return nil, err
 	}
 
-	files, err := fetcher.FetchChangedFileContents(repo, pr, diffOutput)
+	files, err := fetcher.FetchChangedFileContents(repo, pr, diffOutput, todoTypes)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: could not fetch changed file contents; falling back to diff-only parsing where needed: %v\n", err)
 	}

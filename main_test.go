@@ -31,7 +31,7 @@ func (s *stubFetcher) FetchDiff(repo, pr string) (string, error) {
 	return s.diff, s.diffErr
 }
 
-func (s *stubFetcher) FetchChangedFileContents(repo, pr, diff string) (map[string][]byte, error) {
+func (s *stubFetcher) FetchChangedFileContents(repo, pr, diff string, todoTypes []string) (map[string][]byte, error) {
 	s.gotDiffFC = diff
 	return s.files, s.filesErr
 }

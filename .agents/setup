@@ -39,14 +39,20 @@ export PATH="$bin_dir:$PATH"
 echo "Downloading Go modules..."
 go -C "$repo_root" mod download
 
-golangci_lint_version="2.12.2"
+golangci_lint_tag="$(
+  curl --fail --location --silent --show-error --output /dev/null \
+    --write-out '%{url_effective}' \
+    https://github.com/golangci/golangci-lint/releases/latest
+)"
+golangci_lint_tag="${golangci_lint_tag##*/}"
+golangci_lint_version="${golangci_lint_tag#v}"
 if ! command -v golangci-lint >/dev/null 2>&1 || \
   ! golangci-lint version | grep -Fq "version $golangci_lint_version"; then
-  echo "Installing golangci-lint v$golangci_lint_version..."
+  echo "Installing golangci-lint $golangci_lint_tag..."
   curl --fail --location --silent --show-error https://golangci-lint.run/install.sh |
-    sh -s -- -b "$bin_dir" "v$golangci_lint_version"
+    sh -s -- -b "$bin_dir" "$golangci_lint_tag"
 else
-  echo "golangci-lint v$golangci_lint_version is already installed."
+  echo "golangci-lint $golangci_lint_tag is already installed."
 fi
 
 echo "Orb setup complete: $(go version); $(golangci-lint version | head -n 1)"

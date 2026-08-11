@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.1.10](https://github.com/Suree33/gh-pr-todo/compare/v1.1.9...v1.1.10) (2026-08-11)
+
+
+### Performance Improvements
+
+* **github:** fetch file contents without gh subprocesses ([#155](https://github.com/Suree33/gh-pr-todo/issues/155)) ([f46b12f](https://github.com/Suree33/gh-pr-todo/commit/f46b12fe50a98eb213e4bee1fff84ad43cbb5988))
+* **parser:** reuse tree-sitter parser pools ([#154](https://github.com/Suree33/gh-pr-todo/issues/154)) ([49f235b](https://github.com/Suree33/gh-pr-todo/commit/49f235b9a55cba24e25b392f3b87609ff087155e))
+* **parser:** skip unnecessary content fetches ([#153](https://github.com/Suree33/gh-pr-todo/issues/153)) ([3f2bb9c](https://github.com/Suree33/gh-pr-todo/commit/3f2bb9c1292e451d5fe68d39c5ad4bd312e81516))
+
+
+### Miscellaneous Chores
+
+* prepare repository for Amp orbs ([#158](https://github.com/Suree33/gh-pr-todo/issues/158)) ([a6dd3d3](https://github.com/Suree33/gh-pr-todo/commit/a6dd3d3763e1d705f89073dab149164b36f5e788))
+
 ## [1.1.9](https://github.com/Suree33/gh-pr-todo/compare/v1.1.8...v1.1.9) (2026-08-09)
 
 

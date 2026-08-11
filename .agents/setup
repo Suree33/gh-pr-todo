@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+go_version="$(awk '$1 == "go" { print $2; exit }' "$repo_root/go.mod")"
+install_root="$HOME/.local/share/go/$go_version"
+bin_dir="$HOME/.local/bin"
+
+mkdir -p "$bin_dir" "$(dirname "$install_root")"
+
+if [[ ! -x "$install_root/bin/go" ]] || ! "$install_root/bin/go" version | grep -Fq "go$go_version"; then
+  case "$(uname -m)" in
+    x86_64) go_arch="amd64" ;;
+    aarch64|arm64) go_arch="arm64" ;;
+    *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+  esac
+
+  echo "Installing Go $go_version..."
+  archive="$(mktemp)"
+  staging="$(mktemp -d)"
+  trap 'rm -f "$archive"; rm -rf "$staging"' EXIT
+  curl --fail --location --silent --show-error \
+    "https://go.dev/dl/go${go_version}.linux-${go_arch}.tar.gz" \
+    --output "$archive"
+  tar -xzf "$archive" -C "$staging"
+  rm -rf "$install_root"
+  mv "$staging/go" "$install_root"
+  rm -f "$archive"
+  rm -rf "$staging"
+  trap - EXIT
+else
+  echo "Go $go_version is already installed."
+fi
+
+ln -sfn "$install_root/bin/go" "$bin_dir/go"
+ln -sfn "$install_root/bin/gofmt" "$bin_dir/gofmt"
+export PATH="$bin_dir:$PATH"
+
+echo "Downloading Go modules..."
+go -C "$repo_root" mod download
+
+golangci_lint_version="2.12.2"
+if ! command -v golangci-lint >/dev/null 2>&1 || \
+  ! golangci-lint version | grep -Fq "version $golangci_lint_version"; then
+  echo "Installing golangci-lint v$golangci_lint_version..."
+  curl --fail --location --silent --show-error https://golangci-lint.run/install.sh |
+    sh -s -- -b "$bin_dir" "v$golangci_lint_version"
+else
+  echo "golangci-lint v$golangci_lint_version is already installed."
+fi
+
+echo "Orb setup complete: $(go version); $(golangci-lint version | head -n 1)"

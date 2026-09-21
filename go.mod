@@ -5,7 +5,7 @@ go 1.25.8
 require (
 	charm.land/huh/v2 v2.0.3
 	github.com/briandowns/spinner v1.23.2
-	github.com/cli/go-gh/v2 v2.16.0
+	github.com/cli/go-gh/v2 v2.16.1
 	github.com/fatih/color v1.19.0
 	github.com/odvcencio/gotreesitter v0.52.0
 	github.com/spf13/pflag v1.0.10

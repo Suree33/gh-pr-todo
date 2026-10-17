@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.17](https://github.com/Suree33/gh-pr-todo/compare/v1.1.16...v1.1.17) (2026-10-17)
+
+
+### Miscellaneous Chores
+
+* **deps:** bump github.com/cli/go-gh/v2 from 2.16.1 to 2.16.2 ([#178](https://github.com/Suree33/gh-pr-todo/issues/178)) ([6dd53be](https://github.com/Suree33/gh-pr-todo/commit/6dd53beec33b439150edf7cfa93bce62c83bf784))
+
 ## [1.1.16](https://github.com/Suree33/gh-pr-todo/compare/v1.1.15...v1.1.16) (2026-10-05)
 
 
